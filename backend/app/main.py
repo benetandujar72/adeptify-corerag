@@ -25,6 +25,7 @@ from app.api.routes_feedback import router as feedback_router
 from app.api.routes_institucio_seguretat import router as institucio_seguretat_router
 from app.api.routes_institucio_users import router as institucio_users_router
 from app.api.routes_public import router as public_router
+from app.api.routes_servei import router as servei_router
 from app.api.routes_system import router as system_router
 
 
@@ -231,6 +232,9 @@ def crea_app() -> FastAPI:
     app.include_router(institucio_users_router)
     app.include_router(institucio_seguretat_router)
     app.include_router(public_router)
+    # Servei intern (suite → core): delegació d'inferència, autenticat amb
+    # CORE_SERVICE_TOKEN. Desactivat si el secret no està configurat.
+    app.include_router(servei_router)
 
     @app.get("/health", tags=["sistema"])
     def health() -> dict[str, str]:

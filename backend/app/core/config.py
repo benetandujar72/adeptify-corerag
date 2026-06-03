@@ -123,6 +123,16 @@ class Settings(BaseSettings):
     public_chat_max_per_minute: int = 5  # rate-limit per IP (5 peticions/min)
     public_chat_institucio: str = "nou_patufet"  # tenant del canal públic
 
+    # ── Servei intern (suite → core): generació de propostes pedagògiques ──
+    # Secret compartit (Bearer / X-Service-Token) que el suite (adeptify-suiterag,
+    # privat) ha d'enviar per consumir POST /api/servei/*. NO és un token d'usuari:
+    # acredita que la crida prové del suite de confiança a la mateixa LAN. Si està
+    # buit, el servei intern queda DESACTIVAT (defensa en profunditat): el nucli no
+    # delega cap inferència fins que s'hi configura un secret fort. La frontera
+    # open-core es manté: el core no coneix el domini escolar; només rep criteris i
+    # evidència com a context i retorna una proposta (sense desar res ni PII).
+    core_service_token: str = ""
+
     # ── Capa vectorial: pgvector | qdrant ──
     vector_store: str = "pgvector"
     qdrant_url: str = "http://qdrant:6333"
