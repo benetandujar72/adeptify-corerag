@@ -14,7 +14,9 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-corerag}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-corerag_local_pw}
+      # Sense valor per defecte: cal definir POSTGRES_PASSWORD al .env (gitignored).
+      # Així el repo públic NO conté cap contrasenya concreta.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?cal definir POSTGRES_PASSWORD al .env}
       POSTGRES_DB: ${POSTGRES_DB:-corerag}
     volumes:
       - pgdata:/var/lib/postgresql/data
