@@ -196,8 +196,20 @@ async def ingest(
         job.chunks = chunks
         return IngestResponse(job_id=job.job_id, estat=job.estat)
 
-    # Ingesta de carpeta en segon pla (per defecte, sample_data).
-    carpeta = path or settings.sample_data_path
+    # Ingesta de carpeta en segon pla. La ruta es CONTÉ sempre dins de
+    # SAMPLE_DATA_PATH: evita travessa de directoris / lectura arbitrària del
+    # sistema de fitxers del contenidor i el rglob sobre arbres enormes (DoS).
+    base = Path(settings.sample_data_path).resolve()
+    if path:
+        candidata = (base / path).resolve()
+        if candidata != base and not candidata.is_relative_to(base):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ruta d'ingesta no permesa (ha d'estar dins de sample_data).",
+            )
+        carpeta = str(candidata)
+    else:
+        carpeta = str(base)
     background.add_task(_executa_en_rerefons, job.job_id, carpeta)
     return IngestResponse(job_id=job.job_id, estat="encuat")
 

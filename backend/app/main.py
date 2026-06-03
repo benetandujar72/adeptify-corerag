@@ -76,6 +76,9 @@ def _migra() -> None:
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(64)",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_actiu BOOLEAN DEFAULT FALSE",
             "UPDATE users SET totp_actiu=FALSE WHERE totp_actiu IS NULL",
+            # Revocació de tokens (logout/canvi de contrasenya/desactivació).
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 0",
+            "UPDATE users SET token_version=0 WHERE token_version IS NULL",
             # Feedback per institució (defense-in-depth multi-tenant).
             "ALTER TABLE feedback ADD COLUMN IF NOT EXISTS institucio_id VARCHAR(64) DEFAULT 'nou_patufet'",
             "UPDATE feedback SET institucio_id='nou_patufet' WHERE institucio_id IS NULL",
@@ -110,24 +113,28 @@ def _migra() -> None:
 
 
 def _verifica_secrets_produccio() -> None:
-    """Porta d'arrencada (fail-closed) en producció real.
+    """Porta d'arrencada (fail-closed) per a entorns NO-dev.
 
-    Si `ENTORN` és de producció i el `JWT_SECRET` és feble/curt, avorta
-    l'arrencada. En dev/pilot NO bloqueja (els tests usen un secret de dev).
+    Avalua els controls de configuració (JWT_SECRET, token públic, inferència
+    local, contrasenya de BD) i AVORTA l'arrencada si algun és `critic`. S'aplica
+    a tot entorn que no sigui `dev` (pilot inclòs), de manera que un secret
+    placeholder/feble mai pugui arrencar fora de desenvolupament. Els tests usen
+    ENTORN=dev a propòsit, de manera que no els bloqueja.
     """
     from app.core.config import get_settings
 
     s = get_settings()
-    if not s.es_prod:
+    if (s.entorn or "").lower() == "dev":
         return
-    from app.security.produccio_check import _control_jwt
+    from app.security.produccio_check import controls_arrencada
 
-    c = _control_jwt(s)
-    if c.severitat == "critic":
-        rec = f" → {c.recomanacio}" if c.recomanacio else ""
-        raise RuntimeError(
-            f"Arrencada avortada en producció: {c.titol} — {c.detall}{rec}"
+    critics = [c for c in controls_arrencada(s) if c.severitat == "critic"]
+    if critics:
+        detall = "; ".join(
+            f"{c.titol}: {c.detall}{(' → ' + c.recomanacio) if c.recomanacio else ''}"
+            for c in critics
         )
+        raise RuntimeError(f"Arrencada avortada (entorn={s.entorn}): {detall}")
 
 
 class SecurityHeadersMiddleware:
@@ -142,6 +149,8 @@ class SecurityHeadersMiddleware:
         (b"x-frame-options", b"DENY"),
         (b"referrer-policy", b"no-referrer"),
         (b"x-xss-protection", b"0"),
+        # Els navegadors la ignoren sobre HTTP (LAN); s'aplica quan hi ha TLS al davant.
+        (b"strict-transport-security", b"max-age=63072000; includeSubDomains"),
     )
 
     def __init__(self, app) -> None:
@@ -177,7 +186,9 @@ def crea_app() -> FastAPI:
     from app.core.config import get_settings
 
     s = get_settings()
-    exposa_docs = s.exposa_docs
+    # /docs, /redoc i /openapi.json: desactivats SEMPRE en producció (encara que
+    # EXPOSA_DOCS sigui true), i controlats per EXPOSA_DOCS en dev/pilot.
+    exposa_docs = s.exposa_docs and not s.es_prod
 
     app = FastAPI(
         title="adeptify-corerag — backend",

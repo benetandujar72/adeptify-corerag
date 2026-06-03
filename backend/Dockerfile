@@ -41,8 +41,14 @@ COPY scripts ./scripts
 COPY db ./db
 COPY README.md .
 
-# Directori de dades (audit log) i muntatge de sample_data (read-only via compose).
-RUN mkdir -p /app/data
+# Usuari NO-root + directoris escrivibles. La cache de models HuggingFace va al
+# HOME de l'usuari (HF_HOME) i el log d'auditoria a /app/data; ambdós es munten
+# com a volums al compose (sobre aquestes mateixes rutes, propietat de `app`).
+RUN useradd --create-home --uid 10001 app \
+    && mkdir -p /app/data /home/app/.cache/huggingface \
+    && chown -R app:app /app /home/app
+ENV HF_HOME=/home/app/.cache/huggingface
+USER app
 
 EXPOSE 8000
 

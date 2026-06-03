@@ -109,21 +109,41 @@ def actualitza_usuari(
     user = obte_usuari(db, username, institucio_id)
     if user is None:
         return None
+    # Canvis que han d'INVALIDAR els tokens ja emesos (revocació de sessió).
+    revoca = False
     if rol is not None:
         if not es_rol_valid(rol):
             raise ValueError(f"Rol invàlid: {rol}")
+        if rol != user.rol:
+            revoca = True
         user.rol = rol
     if nom is not None:
         user.nom = nom
     if email is not None:
         user.email = email
     if actiu is not None:
+        if actiu is False and user.actiu:
+            revoca = True
         user.actiu = actiu
     if contrasenya:
         user.password_hash = hash_password(contrasenya)
+        revoca = True
+    if revoca:
+        user.token_version = (user.token_version or 0) + 1
     db.commit()
     db.refresh(user)
     return user
+
+
+def revoca_sessions(db: Session, username: str, institucio_id: str | None = None) -> bool:
+    """Invalida TOTS els tokens emesos per a aquest usuari (logout 'a tot arreu')
+    incrementant `token_version`. Retorna True si l'usuari existeix."""
+    user = obte_usuari(db, username, institucio_id)
+    if user is None:
+        return False
+    user.token_version = (user.token_version or 0) + 1
+    db.commit()
+    return True
 
 
 def esborra_usuari(db: Session, username: str, institucio_id: str | None = None) -> bool:

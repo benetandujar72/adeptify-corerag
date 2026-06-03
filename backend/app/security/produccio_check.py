@@ -45,10 +45,25 @@ class Control:
 
 
 def _feble(valor: str) -> bool:
-    """Heurística: el secret conté patrons clarament de dev."""
+    """Heurística: el secret conté patrons clarament de dev/placeholder."""
     v = (valor or "").lower()
     return any(p in v for p in ("test", "dev", "demo", "secret-de", "changeme",
-                                "canviar", "default", "exemple"))
+                                "canviar", "canvia", "aquest", "default", "exemple",
+                                "patufet", "placeholder", "required", "example"))
+
+
+def _entropia_feble(valor: str, minim_distints: int = 12) -> bool:
+    """Pocs caràcters diferents → baixa entropia (p. ex. 'aaaa...' o repetits)."""
+    return len(set(valor or "")) < minim_distints
+
+
+def _default_de(camp: str) -> str:
+    """Valor per defecte d'un camp de Settings (perquè la llista de placeholders
+    no es desincronitzi mai de config.py)."""
+    try:
+        return str(Settings.model_fields[camp].default)
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _control_entorn(s: Settings) -> Control:
@@ -73,17 +88,29 @@ def _control_entorn(s: Settings) -> Control:
 
 def _control_jwt(s: Settings) -> Control:
     js = s.jwt_secret or ""
+    gen = "Genera'n un de fort: `python -c \"import secrets; print(secrets.token_urlsafe(48))\"`. Tots els tokens emesos quedaran invalidats."
+    # Coincidència EXACTA amb el placeholder enviat a config.py / .env.example: crític
+    # sempre (independentment de l'heurística de substrings, que abans no el detectava).
+    if js and js == _default_de("jwt_secret"):
+        return Control(
+            "jwt_secret", "JWT_SECRET", "critic",
+            "És el valor PLACEHOLDER per defecte (mai s'ha canviat).", gen,
+        )
     if len(js) < 16:
         return Control(
             "jwt_secret", "JWT_SECRET", "critic",
-            f"Massa curt ({len(js)} caràcters).",
-            "Genera un nou secret: `python -c \"import secrets; print(secrets.token_urlsafe(48))\"`",
+            f"Massa curt ({len(js)} caràcters).", gen,
         )
     if _feble(js):
         return Control(
             "jwt_secret", "JWT_SECRET", "critic",
-            "Conté patrons habituals de desenvolupament (test/dev/demo/canviar).",
-            "Substitueix-lo per un valor aleatori fort. Tots els tokens emesos quedaran invalidats.",
+            "Conté patrons habituals de desenvolupament/placeholder (test/dev/demo/canvia/changeme…).", gen,
+        )
+    # En producció exigim clau llarga (>=32) i amb prou entropia (defensa-en-profunditat).
+    if s.es_prod and (len(js) < 32 or _entropia_feble(js)):
+        return Control(
+            "jwt_secret", "JWT_SECRET", "critic",
+            f"Insuficient per a producció (longitud {len(js)}, {len(set(js))} caràcters diferents; cal >=32 i alta entropia).", gen,
         )
     return Control(
         "jwt_secret", "JWT_SECRET", "ok",
@@ -99,15 +126,18 @@ def _control_public_token(s: Settings) -> Control:
             "Canal públic DESACTIVAT (PUBLIC_CHAT_TOKEN buit).",
             "Si vols exposar la web del centre al canal públic, configura un token aleatori fort.",
         )
+    # Si el canal públic està ACTIU, un token feble/curt és crític en producció
+    # (qualsevol a Internet hi podria accedir), avís en altres entorns.
+    sev = "critic" if s.es_prod else "avis"
     if _feble(pt):
         return Control(
-            "public_chat_token", "PUBLIC_CHAT_TOKEN", "avis",
-            "El token conté patrons de desenvolupament.",
+            "public_chat_token", "PUBLIC_CHAT_TOKEN", sev,
+            "El token conté patrons de desenvolupament/placeholder.",
             "Generar un nou token aleatori i actualitzar el plugin WP en conseqüència.",
         )
     if len(pt) < 24:
         return Control(
-            "public_chat_token", "PUBLIC_CHAT_TOKEN", "avis",
+            "public_chat_token", "PUBLIC_CHAT_TOKEN", sev,
             f"Massa curt ({len(pt)} caràcters).",
             "Mínim recomanat: 32 caràcters aleatoris.",
         )
@@ -166,11 +196,87 @@ def _control_credencials_demo() -> Control:
             "credencials_demo", "Credencials demo", "ok",
             "Cap usuari demo present.",
         )
+    # En producció, usuaris demo amb contrasenya pública coneguda = crític.
+    sev = "critic" if get_settings().es_prod else "avis"
     return Control(
-        "credencials_demo", "Credencials demo", "avis",
+        "credencials_demo", "Credencials demo", sev,
         f"Usuaris demo presents: {', '.join(sorted(existents))}.",
         "Canvia o esborra les contrasenyes per defecte abans d'operar amb usuaris reals.",
     )
+
+
+def _host_de_url(url: str) -> str:
+    """Hostname d'una URL (sense esquema ni port)."""
+    from urllib.parse import urlparse
+    try:
+        return (urlparse(url).hostname or "").lower()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _es_host_local(host: str) -> bool:
+    """Cert si el host és loopback, IP privada (RFC1918/ULA) o un nom de servei
+    intern conegut (docker compose / on-prem). NO fa cap resolució DNS."""
+    import ipaddress
+    if not host:
+        return False
+    if host in {"localhost", "host.docker.internal", "ollama", "vllm", "db", "qdrant", "backend"}:
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+        return ip.is_loopback or ip.is_private
+    except ValueError:
+        return False  # és un domini públic (api.openai.com, etc.)
+
+
+def _control_inferencia_local(s: Settings) -> Control:
+    """L'endpoint d'inferència (OPENAI_BASE_URL) ha de ser LOCAL. Si apunta a un
+    host públic, la garantia de zero-egress es trenca → crític en producció."""
+    host = _host_de_url(s.openai_base_url)
+    if _es_host_local(host):
+        return Control(
+            "inferencia_local", "Inferència local", "ok",
+            f"OPENAI_BASE_URL apunta a un host local ({host or '—'}).",
+        )
+    sev = "critic" if s.es_prod else "avis"
+    return Control(
+        "inferencia_local", "Inferència local", sev,
+        f"OPENAI_BASE_URL apunta a un host NO local ({host}); risc de fuita de dades a un tercer.",
+        "Apunta la inferència a un model auto-allotjat local (Ollama/vLLM) a la LAN o loopback.",
+    )
+
+
+def _control_db_password(s: Settings) -> Control:
+    """La contrasenya de la BD (a DATABASE_URL) no pot ser un placeholder en prod."""
+    url = s.database_url or ""
+    pw = ""
+    try:
+        from urllib.parse import urlparse
+        pw = urlparse(url).password or ""
+    except Exception:  # noqa: BLE001
+        pw = ""
+    if pw and (_feble(pw) or pw == "patufet"):
+        sev = "critic" if s.es_prod else "avis"
+        return Control(
+            "db_password", "Contrasenya de BD", sev,
+            "La contrasenya de DATABASE_URL sembla un placeholder/dev (p. ex. 'patufet'/'canvia').",
+            "Defineix una contrasenya forta a POSTGRES_PASSWORD/DATABASE_URL al `.env`.",
+        )
+    return Control(
+        "db_password", "Contrasenya de BD", "ok",
+        "Contrasenya de BD no és un placeholder conegut.",
+    )
+
+
+def controls_arrencada(s: Settings) -> list[Control]:
+    """Controls de CONFIG (sense BD) que avalua la porta d'arrencada fail-closed.
+    No fan cap consulta a la BD perquè s'executen abans de crear les taules."""
+    return [
+        _control_jwt(s),
+        _control_public_token(s),
+        _control_inferencia_local(s),
+        _control_db_password(s),
+    ]
 
 
 def _control_audit_log(s: Settings) -> Control:
@@ -272,6 +378,8 @@ def executa_check() -> dict[str, Any]:
         _control_entorn(s),
         _control_jwt(s),
         _control_public_token(s),
+        _control_inferencia_local(s),
+        _control_db_password(s),
         _control_acces_remot(s),
         _control_xarxa_local(s),
         _control_credencials_demo(),

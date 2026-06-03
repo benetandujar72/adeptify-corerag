@@ -124,8 +124,11 @@ def test_ingest_rbac_alumne_denegat(client, token_alumne):
     assert r.status_code == 403
 
 
-def test_ingest_rbac_docent_permes(client, auth, tmp_path):
+def test_ingest_rbac_docent_permes(client, auth, tmp_path, monkeypatch):
     """El docent SÍ pot ingerir (rol de gestió/docència)."""
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "sample_data_path", str(tmp_path))
     (tmp_path / "nota.md").write_text("Nota de prova.", encoding="utf-8")
     r = client.post("/api/ingest", headers=auth, params={"path": str(tmp_path)})
     assert r.status_code == 202

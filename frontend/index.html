@@ -2,6 +2,11 @@
 <html lang="ca">
   <head>
     <meta charset="UTF-8" />
+    <!-- Content-Security-Policy: mitiga XSS. script-src 'self' bloqueja scripts
+         injectats/remots (el bundle és propi). connect-src obert a http/https
+         perquè l'API pot estar en un altre origen/port (VITE_API_BASE_URL) a la
+         LAN. style-src 'unsafe-inline' perquè React/Tailwind usen estils en línia. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; connect-src 'self' http: https:; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="IA Nou Patufet — Assistent escolar self-hosted amb RAG multi-agent" />

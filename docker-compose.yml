@@ -21,7 +21,9 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./backend/db/init:/docker-entrypoint-initdb.d:ro
-    ports: ["5545:5432"]
+    # Només loopback del host (la BD no s'exposa a la xarxa; el backend hi parla
+    # per la xarxa interna de Docker). Per a accés d'admin local, 127.0.0.1.
+    ports: ["127.0.0.1:5545:5432"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-corerag}"]
       interval: 5s
@@ -42,7 +44,7 @@ services:
     ports: ["8089:8000"]
     volumes:
       - ./sample_data:/app/sample_data:ro
-      - hf_cache:/root/.cache/huggingface
+      - hf_cache:/home/app/.cache/huggingface
       - backend_data:/app/data
     # SENSE bloc deploy.resources.devices: el core NO reserva la GPU (inferència a CPU).
 

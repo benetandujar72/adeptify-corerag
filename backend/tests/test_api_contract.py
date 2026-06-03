@@ -68,8 +68,10 @@ def test_agents_inclou_copilot_didactic_per_docent(client, auth):
     assert "copilot_butlleti" in agents
 
 
-def test_system_status_estructura_i_crides_externes_zero(client):
-    resp = client.get("/api/system/status")
+def test_system_status_estructura_i_crides_externes_zero(client, auth):
+    # /system/status requereix autenticació (exposa host/model/entorn).
+    assert client.get("/api/system/status").status_code == 401
+    resp = client.get("/api/system/status", headers=auth)
     assert resp.status_code == 200
     cos = resp.json()
     assert set(cos.keys()) == {

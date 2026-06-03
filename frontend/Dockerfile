@@ -18,18 +18,25 @@ ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 RUN npm run build
 
-# ── Etapa 2: serve estàtic ────────────────────────────────────────────────────
+# ── Etapa 2: serve estàtic (sense toolchain de dev) ─────────────────────────────
+# Servim el build estàtic amb `serve` (un sol paquet), NO amb `vite preview`, de
+# manera que la imatge de runtime no arrossega les devDependencies. Usuari no-root.
 FROM node:20-alpine AS runtime
 
 WORKDIR /app
 
-# Instal·la les dependències necessàries per a vite preview
-COPY package.json package-lock.json* ./
-RUN npm install --no-audit --no-fund
+RUN npm install -g serve@14.2.3
 
+# Només el build; cap codi font ni node_modules de dev.
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/vite.config.ts ./vite.config.ts
+
+# node:alpine ja inclou l'usuari no-root `node` (uid 1000).
+USER node
 
 EXPOSE 5173
 
-CMD ["npm", "run", "preview"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -qO- http://localhost:5173/ >/dev/null 2>&1 || exit 1
+
+# -s = SPA (fallback a index.html); -l = port.
+CMD ["serve", "-s", "dist", "-l", "5173"]

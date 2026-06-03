@@ -277,6 +277,10 @@ class User(Base):
     nom: Mapped[str | None] = mapped_column(String(256), nullable=True)
     email: Mapped[str | None] = mapped_column(String(256), nullable=True)
     actiu: Mapped[bool] = mapped_column(default=True)
+    # Versió de token: en incrementar-la s'invaliden TOTS els JWT emesos abans
+    # (logout, canvi de contrasenya, desactivació). El token porta la claim `tv`
+    # i `get_current_user` la compara amb aquest valor.
+    token_version: Mapped[int] = mapped_column(default=0)
     # MFA/2FA (TOTP). `totp_secret` = clau base32 (⚠️ xifrar en repòs a producció,
     # com JWT_SECRET; diferit). `totp_actiu` = l'usuari ha completat l'enrolment.
     totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)

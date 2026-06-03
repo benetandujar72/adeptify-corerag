@@ -15,6 +15,7 @@ Reutilitza EXACTAMENT el mateix codi d'ingesta que /api/ingest
 
 from __future__ import annotations
 
+import os
 import sys
 
 from app.core import users
@@ -67,6 +68,16 @@ def crea_usuaris_demo() -> list[tuple[str, str, str]]:
 
 
 def main() -> int:
+    # Guarda de producció: NO sembrar usuaris demo (contrasenyes públiques) en un
+    # entorn real. Cal forçar-ho explícitament amb SEED_DEMO=1 si de debò es vol.
+    if get_settings().es_prod and os.environ.get("SEED_DEMO") != "1":
+        print(
+            "✗ ENTORN de producció detectat: em nego a sembrar usuaris demo amb "
+            "contrasenyes per defecte. Si realment ho vols (NO recomanat), torna a "
+            "executar amb SEED_DEMO=1."
+        )
+        return 1
+
     print("→ Creant taules…")
     crea_taules()
 

@@ -108,3 +108,18 @@ CREATE TABLE IF NOT EXISTS feedback (
 );
 
 CREATE INDEX IF NOT EXISTS idx_feedback_message ON feedback(message_id);
+
+-- ── Immutabilitat de l'auditoria (append-only de debò) ───────────────────────
+-- El REVOKE de més amunt no afecta el rol PROPIETARI de la taula. Aquest trigger
+-- impedeix UPDATE/DELETE sobre audit_log per a QUALSEVOL rol (defensa-en-profunditat
+-- forense). Les insercions segueixen permeses.
+CREATE OR REPLACE FUNCTION audit_log_immutable() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'audit_log és append-only: operació % no permesa', TG_OP;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_audit_log_immutable ON audit_log;
+CREATE TRIGGER trg_audit_log_immutable
+    BEFORE UPDATE OR DELETE ON audit_log
+    FOR EACH ROW EXECUTE FUNCTION audit_log_immutable();

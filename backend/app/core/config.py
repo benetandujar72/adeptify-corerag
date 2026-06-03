@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     # ── Seguretat ──
     jwt_secret: str = "canvia-aquest-secret"
     jwt_algorithm: str = "HS256"
-    jwt_expira_hores: int = 12
+    jwt_expira_hores: int = 8   # finestra de sessió més curta (revocació + caducitat)
     audit_log_path: str = "/app/data/audit.log"
 
     # ── Accés remot (Fase 1) ──
@@ -138,7 +138,10 @@ class Settings(BaseSettings):
     audit_diaria_email: str = ""  # còpia opcional
 
     # ── Entorn i metadades reportades a /api/system/status ──
-    entorn: str = "pilot-gcp"  # dev | pilot-gcp | prod-onprem
+    # Per defecte `dev` (sense porta de seguretat). En desplegar de debò, posa
+    # `pilot-gcp`/`prod-onprem` al `.env`: aleshores la porta fail-closed exigeix
+    # secrets forts i inferència local abans d'arrencar.
+    entorn: str = "dev"  # dev | pilot-gcp | prod-onprem
     versio: str = "v0.1.0-mvp"
     server_host: str = "192.168.1.10 (o IP VM GCP)"
 

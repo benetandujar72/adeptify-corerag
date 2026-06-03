@@ -19,11 +19,12 @@ aquest canal: per disseny no és al namespace `publico`.
 
 from __future__ import annotations
 
+import hmac
 import logging
 import re
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.schemas import Font
@@ -44,7 +45,9 @@ _log = logging.getLogger(__name__)
 
 
 class PublicChatRequest(BaseModel):
-    pregunta: str
+    # Límit a la capa de validació (HTTP 422 abans de cap assignació de memòria),
+    # mirall del límit de /api/chat. El truncat posterior és defensa addicional.
+    pregunta: str = Field(..., max_length=2000)
     # Reservat per a futura preferència d'idioma del widget; per ara ignorat.
     idioma: str | None = None
 
@@ -124,7 +127,9 @@ def _verifica_token_public(
     if not rebut and authorization:
         if authorization.lower().startswith("bearer "):
             rebut = authorization.split(" ", 1)[1].strip()
-    if rebut != esperat:
+    # Comparació en TEMPS CONSTANT (evita canal lateral de temporització que
+    # permetria endevinar el token caràcter a caràcter).
+    if not hmac.compare_digest(rebut.encode("utf-8"), esperat.encode("utf-8")):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token de canal públic invàlid.",

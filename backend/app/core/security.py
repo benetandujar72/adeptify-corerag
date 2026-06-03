@@ -30,6 +30,13 @@ class Usuari:
     usuari: str
     rol: Rol
     institucio: str = "nou_patufet"  # slug del tenant (multi-institució)
+    token_version: int = 0  # claim `tv`; es compara amb User.token_version
+
+
+# Issuer/Audience del JWT (verificats al descodificar): el token només és vàlid
+# per a aquesta aplicació i no es pot reutilitzar amb un altre servei.
+_JWT_ISS = "adeptify"
+_JWT_AUD = "adeptify"
 
 
 def crea_token(
@@ -37,10 +44,12 @@ def crea_token(
     rol: Rol,
     institucio: str = "nou_patufet",
     settings: Settings | None = None,
+    token_version: int = 0,
 ) -> str:
     """Emet un JWT signat amb l'usuari, el rol i la institució (tenant).
 
-    El token caduca segons `jwt_expira_hores`.
+    Inclou `tv` (token_version) per poder revocar tokens, i `iss`/`aud` per
+    acotar-ne l'ús. El token caduca segons `jwt_expira_hores`.
     """
     settings = settings or get_settings()
     ara = dt.datetime.now(dt.timezone.utc)
@@ -48,6 +57,9 @@ def crea_token(
         "sub": usuari,
         "rol": rol.value if isinstance(rol, Rol) else str(rol),
         "inst": institucio,
+        "tv": int(token_version),
+        "iss": _JWT_ISS,
+        "aud": _JWT_AUD,
         "iat": ara,
         "exp": ara + dt.timedelta(hours=settings.jwt_expira_hores),
     }
@@ -55,11 +67,13 @@ def crea_token(
 
 
 def descodifica_token(token: str, settings: Settings | None = None) -> Usuari:
-    """Verifica el token i retorna l'usuari. Llança 401 si és invàlid."""
+    """Verifica el token (signatura, caducitat, issuer, audience) i retorna
+    l'usuari. Llança 401 si és invàlid."""
     settings = settings or get_settings()
     try:
         payload = jwt.decode(
-            token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
+            token, settings.jwt_secret, algorithms=[settings.jwt_algorithm],
+            audience=_JWT_AUD, issuer=_JWT_ISS,
         )
     except jwt.ExpiredSignatureError as exc:
         raise HTTPException(
@@ -80,7 +94,50 @@ def descodifica_token(token: str, settings: Settings | None = None) -> Usuari:
             detail="Token sense identitat o rol vàlids.",
         )
     institucio = payload.get("inst") or "nou_patufet"
-    return Usuari(usuari=sub, rol=Rol(rol), institucio=institucio)
+    tv = int(payload.get("tv", 0) or 0)
+    return Usuari(usuari=sub, rol=Rol(rol), institucio=institucio, token_version=tv)
+
+
+def _revalida_contra_bd(db, usuari: "Usuari") -> "Usuari":
+    """Revalida la identitat del token contra la fila d'usuari (si existeix):
+
+    - usuari desactivat (`actiu=False`)            → 401 (desactivació immediata)
+    - `token_version` no coincideix               → 401 (logout/canvi de contrasenya)
+    - rol diferent a la BD                         → mana la BD (degradació de rol)
+
+    Si NO hi ha fila (p. ex. tokens sintètics de test o desplegaments sense taula
+    d'usuaris encara), es confia en el token (comportament previ). La supressió
+    DURA d'un usuari (fila esborrada) queda coberta per la caducitat del token.
+    """
+    from sqlalchemy import select
+
+    from app.db.models import User
+
+    row = db.scalar(
+        select(User).where(
+            User.username == usuari.usuari,
+            User.institucio_id == usuari.institucio,
+        )
+    )
+    if row is None:
+        return usuari
+    if not row.actiu:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="El compte està desactivat.",
+        )
+    if int(getattr(row, "token_version", 0) or 0) != usuari.token_version:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="La sessió s'ha revocat. Torna a iniciar sessió.",
+        )
+    if es_rol_valid(row.rol) and row.rol != usuari.rol.value:
+        # El rol persistit mana (protegeix de degradacions de rol no aplicades).
+        return Usuari(
+            usuari=usuari.usuari, rol=Rol(row.rol),
+            institucio=usuari.institucio, token_version=usuari.token_version,
+        )
+    return usuari
 
 
 # ── Control d'accés remot (Fase 1) ──────────────────────────────────────────
@@ -217,6 +274,8 @@ def get_current_user(
 
         sessio = get_sessionmaker()()
         try:
+            # Revalida contra la BD (desactivació/revocació/degradació de rol).
+            usuari = _revalida_contra_bd(sessio, usuari)
             comprova_acces_xarxa_institucio(request, usuari, settings, sessio)
         finally:
             sessio.close()

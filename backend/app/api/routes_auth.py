@@ -124,7 +124,10 @@ def login(
                 "Connecta't des de la xarxa del centre per a aquest rol."
             ),
         )
-    token = crea_token(user.username, rol, institucio=user.institucio_id)
+    token = crea_token(
+        user.username, rol, institucio=user.institucio_id,
+        token_version=user.token_version or 0,
+    )
     try:
         audit.registra_accio(
             db, usuari=user.username, rol=rol.value, accio="login",
@@ -160,6 +163,21 @@ def me(
     u = users.obte_usuari(db, usuari.usuari, institucio_id=usuari.institucio)
     idioma = (u.idioma or "ca") if u else "ca"
     return MeResponse(usuari=usuari.usuari, rol=usuari.rol.value, idioma=idioma)
+
+
+@router.post("/logout")
+def logout(
+    usuari: Usuari = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Tanca la sessió a TOT arreu: incrementa `token_version`, de manera que
+    QUALSEVOL token emès abans (en aquest o altres dispositius) queda invalidat."""
+    users.revoca_sessions(db, usuari.usuari, institucio_id=usuari.institucio)
+    try:
+        audit.registra_accio(db, usuari=usuari.usuari, rol=usuari.rol.value, accio="logout")
+    except Exception:
+        pass
+    return {"ok": True}
 
 
 _IDIOMES_ADMESOS = {"ca", "es", "eu"}

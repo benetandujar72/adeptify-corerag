@@ -128,10 +128,13 @@ def institucio_llicencia(
 
 @router.get("/system/status", response_model=SystemStatusResponse)
 def system_status(
+    usuari: Usuari = Depends(get_current_user),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> SystemStatusResponse:
-    """Indicadors d'estat per al dashboard."""
+    """Indicadors d'estat per al dashboard (requereix autenticació: exposa
+    host/model/entorn, que no s'han de filtrar a usuaris no autenticats; per a
+    una sonda de vida pública useu GET /health)."""
     try:
         n_docs = db.scalar(select(func.count(Document.id))) or 0
         ultima = db.scalar(select(func.max(Document.creat_el)))

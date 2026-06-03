@@ -20,6 +20,9 @@ from app.db.session import get_db
 
 router = APIRouter(prefix="/api", tags=["veu"])
 
+# Límit de mida de l'àudio (anti exhauriment de memòria): 25 MB.
+MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
 
 @router.post("/transcribe")
 async def transcriu_audio(
@@ -28,9 +31,22 @@ async def transcriu_audio(
     db: Session = Depends(get_db),
 ) -> dict:
     """Transcriu un clip d'àudio (dictat) a text, localment."""
+    # Rebuig per mida declarada (si el client la informa) abans de llegir res.
+    if fitxer.size is not None and fitxer.size > MAX_AUDIO_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="L'àudio supera la mida màxima permesa (25 MB).",
+        )
     suffix = Path(fitxer.filename or "audio.webm").suffix or ".webm"
+    dades = await fitxer.read()
+    # Defensa si el client no ha informat la mida: comprova els bytes llegits.
+    if len(dades) > MAX_AUDIO_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="L'àudio supera la mida màxima permesa (25 MB).",
+        )
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(await fitxer.read())
+        tmp.write(dades)
         cami = tmp.name
     try:
         text = transcribe.transcriu(cami)

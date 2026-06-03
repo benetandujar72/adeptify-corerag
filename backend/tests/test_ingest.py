@@ -48,7 +48,12 @@ def test_reingesta_actualitza_no_duplica(tmp_path, db):
     assert docs2 == 0  # no es crea un document nou; es reindexa
 
 
-def test_endpoint_ingest_path(client, auth, tmp_path):
+def test_endpoint_ingest_path(client, auth, tmp_path, monkeypatch):
+    # La ingesta de carpeta es conté dins de SAMPLE_DATA_PATH; per al test, fem
+    # que la base sigui el tmp_path.
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "sample_data_path", str(tmp_path))
     (tmp_path / "nota.md").write_text("Nota de prova per ingerir.", encoding="utf-8")
     resp = client.post("/api/ingest", headers=auth, params={"path": str(tmp_path)})
     assert resp.status_code == 202
@@ -58,6 +63,15 @@ def test_endpoint_ingest_path(client, auth, tmp_path):
     estat = client.get(f"/api/ingest/{cos['job_id']}", headers=auth)
     assert estat.status_code == 200
     assert estat.json()["estat"] in {"fet", "processant", "encuat", "error"}
+
+
+def test_endpoint_ingest_path_fora_de_base_denegat(client, auth, tmp_path, monkeypatch):
+    """Travessa de directoris: una ruta FORA de la base permesa retorna 400."""
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "sample_data_path", str(tmp_path))
+    resp = client.post("/api/ingest", headers=auth, params={"path": "/etc"})
+    assert resp.status_code == 400
 
 
 def test_endpoint_ingest_job_inexistent(client, auth):
