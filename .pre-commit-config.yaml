@@ -1,0 +1,38 @@
+# Pre-commit hooks for adeptify-corerag — secret scanning + hygiene.
+#
+# One-time setup:
+#   pip install pre-commit
+#   pre-commit install            # installs the git pre-commit hook
+#   pre-commit autoupdate         # pin the latest hook revisions
+#   pre-commit run --all-files    # first full pass
+#
+# After this, every `git commit` is scanned. A commit is BLOCKED if a
+# secret/private key is detected. This is the local layer of "zero leak";
+# the CI workflow (.github/workflows/secret-scan.yml) is the second layer.
+
+minimum_pre_commit_version: "3.5.0"
+fail_fast: false
+
+repos:
+  # --- Secret scanning ---
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2          # run `pre-commit autoupdate` to pin the latest
+    hooks:
+      - id: gitleaks
+        # uses .gitleaks.toml at the repo root
+
+  # --- Basic hygiene / leak prevention ---
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: ["--maxkb=4096"]     # block accidental dumps/models/binaries
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-json
+      - id: mixed-line-ending
+        args: ["--fix=lf"]

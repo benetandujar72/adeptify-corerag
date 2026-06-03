@@ -1,0 +1,51 @@
+# ───────── IA Nou Patufet · backend · dependències ─────────
+# Versions fixades per a reproductibilitat (Python 3.11).
+
+# --- Web / API ---
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.17
+sse-starlette==2.1.3
+pydantic==2.10.3
+pydantic-settings==2.6.1
+
+# --- Base de dades / vector store ---
+SQLAlchemy==2.0.36
+psycopg[binary]==3.2.3
+pgvector==0.3.6
+
+# --- Client LLM (OpenAI-compatible: Ollama dev / vLLM prod) ---
+openai==1.57.4
+
+# --- Orquestració multi-agent ---
+langgraph==0.2.53
+
+# --- Seguretat (JWT) ---
+PyJWT==2.10.1
+
+# --- Ingesta de documents (loaders) ---
+pypdf==5.1.0
+python-docx==1.1.2
+beautifulsoup4==4.12.3
+markdown-it-py==3.0.0
+
+# --- Generació de documents (PDF oficial: butlletins LOMLOE) ---
+# Pur Python (sense dependències de sistema); render server-side del butlletí.
+reportlab==4.4.7
+
+# --- Embeddings i reranker auto-allotjats ---
+# Carregats de forma mandrosa (lazy). En tests s'embeliquen amb dobles,
+# de manera que no cal descarregar models de HuggingFace per a la CI.
+FlagEmbedding==1.3.3
+sentence-transformers==3.3.1
+
+# --- Integracions externes (Fase 4 — Google Workspace) ---
+# Lectura de Drive (read-only), esborranys de Gmail i Calendar, sempre via la
+# passarel·la de privadesa. NO és inferència: no contamina `crides_externes`.
+google-auth>=2.34,<3
+google-auth-httplib2>=0.2,<0.3
+google-api-python-client>=2.140,<3
+
+# --- Tests ---
+pytest==8.3.4
+httpx==0.28.1

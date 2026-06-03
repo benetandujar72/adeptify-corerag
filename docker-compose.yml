@@ -1,0 +1,59 @@
+# adeptify-corerag — stack AÏLLAT del nucli obert.
+#
+# Aïllament total respecte de la demo en marxa (`adeptify-rag-mvp`):
+#   · project name propi (`adeptify-corerag`) → volums i xarxa separats.
+#   · ports de host que NO xoquen amb la demo (db 5545 · backend 8089 · frontend 5181).
+#   · SENSE reserva de GPU; inferència via l'Ollama NATIU compartit (host.docker.internal:11434).
+#
+# Ús:  docker compose up -d   (des d'aquesta carpeta)
+name: adeptify-corerag
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-corerag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-corerag_local_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-corerag}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/db/init:/docker-entrypoint-initdb.d:ro
+    ports: ["5545:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-corerag}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    # Accés a l'Ollama natiu del host (LLM compartit). A Docker Desktop ja existeix;
+    # l'afegim explícitament per compatibilitat (Linux/host-gateway).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports: ["8089:8000"]
+    volumes:
+      - ./sample_data:/app/sample_data:ro
+      - hf_cache:/root/.cache/huggingface
+      - backend_data:/app/data
+    # SENSE bloc deploy.resources.devices: el core NO reserva la GPU (inferència a CPU).
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:8089/api
+    restart: unless-stopped
+    depends_on: [backend]
+    ports: ["5181:5173"]
+
+volumes:
+  pgdata:
+  hf_cache:
+  backend_data:

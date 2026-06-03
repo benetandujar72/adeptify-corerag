@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Colors de marca per defecte (Nou Patufet). El branding per institució els
+     sobreescriu en runtime via document.documentElement.style (lib/branding.ts).
+     Format: canals RGB separats per espais, per a `rgb(var(...) / <alpha>)`. */
+  :root {
+    --brand-navy-rgb: 11 37 69;    /* #0B2545 */
+    --brand-terra-rgb: 201 123 78; /* #C97B4E */
+  }
+
+  html {
+    font-family: Calibri, Arial, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    background-color: #E5E0D5;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  /* Scrollbar personalitzat */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #DDD7C8;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #C97B4E;
+  }
+}
+
+@layer utilities {
+  .line-clamp-1 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}
