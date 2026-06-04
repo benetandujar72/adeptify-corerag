@@ -33,6 +33,7 @@ from app.core.config import Settings, get_settings
 from app.core.rate_limit_ip import consumeix as rl_consumeix
 from app.core.security import ip_de_peticio
 from app.db.session import get_db
+from app.core.principis import GUARDRAIL_HUMANISME
 from app.rag.llm import get_llm_client
 from app.rag.retriever import retrieve, agrega_fonts
 from app.rag.vectorstore.base import NAMESPACE_PUBLIC
@@ -225,6 +226,7 @@ def public_chat(
     context = "\n\n".join(blocs) or "(cap document públic rellevant)"
 
     system_prompt = (
+        f"{GUARDRAIL_HUMANISME}\n\n"
         "Ets l'assistent PÚBLIC del centre educatiu. Només pots respondre a "
         "partir dels documents PÚBLICS del centre (FAQ, horaris generals, "
         "calendari, info institucional). NO inventis dades. NO comparteixis "
