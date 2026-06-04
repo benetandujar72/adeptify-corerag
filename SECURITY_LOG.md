@@ -114,5 +114,19 @@ K7.4 sanitización) · secrets_filter.py (K8.3) · provenance.py (K8.4) · mcp_p
 - `detect-secrets` con todos los plugins sobre-redactaba prosa (entropía/keyword).
   Corregido: solo plugins de alta precisión (AWS/JWT/PrivateKey/…); el core es regex.
 
-**Pendiente (incremento 2)**: sandbox K4.1–K4.5 (contenedor efímero, seccomp, cgroups v2,
-`--network none`, sin shell). NO toca firewall del host (per-container) → sin STOP-4.
+### Incremento 2 (sandbox de ejecución K4.1–K4.5) — verificado en vivo
+
+Imagen `adeptify-sandbox:f2` (python:3.12-slim SIN shell) + `seccomp.json` + `app/sandbox.py`
+(`build_docker_args` puro + `run_sandboxed`). `subprocess` SOLO aquí (argv fijo, sin shell);
+INV-1 test refinado en consecuencia. Verificación live (`docker run` directo):
+
+- K4.5/INV-1 sin shell: `subprocess(["sh","-c",…])` → `FileNotFoundError` → `OK_no_shell`.
+- K4.2 seccomp: `socket(AF_INET)` → `PermissionError` (EPERM) → `OK_seccomp_EPERM`.
+- K4.3/INV-3 egress: `--network none`; AF_UNIX permitido, AF_INET bloqueado → `OK_no_inet`.
+- K4.4 cgroups: `bytearray(400MB)` con `--memory 256m` (sin swap) → **exit 137 (OOM-killed)**;
+  wall-clock por timeout del runner (kill verificado).
+- K4.1 efímero: `--rm` → `docker ps -a` sin contenedor residual.
+
+Batería: **92 non-RLS + 4 RLS** verde (py3.12). `--network none` es per-contenedor (namespace),
+NO toca el firewall del host → sin STOP-4. La regla de red del host queda como belt adicional
+(STOP-4, pendiente de aprobación).

@@ -1,0 +1,33 @@
+{
+  "defaultAction": "SCMP_ACT_ALLOW",
+  "comment": "Perfil restrictiu del sandbox d'execucio (K4.2). Allow-by-default amb denylist de syscalls perillosos; socket(AF_INET/AF_INET6) denegat (loopback/AF_UNIX permes).",
+  "syscalls": [
+    {
+      "names": [
+        "ptrace", "process_vm_readv", "process_vm_writev",
+        "mount", "umount2", "pivot_root", "mount_setattr", "open_by_handle_at",
+        "setns", "unshare", "reboot", "swapon", "swapoff",
+        "init_module", "finit_module", "delete_module", "kexec_load", "kexec_file_load",
+        "add_key", "keyctl", "request_key", "bpf", "perf_event_open",
+        "acct", "settimeofday", "clock_settime", "stime",
+        "create_module", "query_module", "get_kernel_syms", "nfsservctl"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1
+    },
+    {
+      "names": ["socket"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "args": [{ "index": 0, "value": 2, "op": "SCMP_CMP_EQ" }],
+      "comment": "AF_INET"
+    },
+    {
+      "names": ["socket"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "args": [{ "index": 0, "value": 10, "op": "SCMP_CMP_EQ" }],
+      "comment": "AF_INET6"
+    }
+  ]
+}

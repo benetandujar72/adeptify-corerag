@@ -21,25 +21,35 @@ from app.vault import Vault, assert_no_secrets
 APP_DIR = pathlib.Path("/app/app")
 # Detectem CRIDES reals (no mencions en patrons/strings de detecció). El negative
 # lookbehind evita falsos positius com el patró `\beval\s*\(` dins de guardrails.py.
-_DANGER = [
-    (re.compile(r"\bimport\s+subprocess\b"), "import subprocess"),
-    (re.compile(r"\bsubprocess\s*\.\s*\w"), "subprocess.<call>"),
+_DANGER_TOTS = [  # prohibits a TOTS els mòduls del kernel
     (re.compile(r"\bos\.system\s*\("), "os.system("),
     (re.compile(r"\bos\.popen\s*\("), "os.popen("),
     (re.compile(r"(?<![\\\w.])eval\s*\("), "eval("),
     (re.compile(r"(?<![\\\w.])exec\s*\("), "exec("),
     (re.compile(r"(?<![\\\w.])__import__\s*\("), "__import__("),
     (re.compile(r"\bpickle\.loads?\s*\("), "pickle.load("),
+    (re.compile(r"shell\s*=\s*True"), "shell=True"),
 ]
+_SUBPROC = [
+    (re.compile(r"\bimport\s+subprocess\b"), "import subprocess"),
+    (re.compile(r"\bsubprocess\s*\.\s*\w"), "subprocess.<call>"),
+]
+# sandbox.py és l'ÚNIC autoritzat a usar subprocess: llançador del sandbox (docker),
+# amb argv FIX i sense shell. No executa codi del xat al procés del kernel.
+_SUBPROC_PERMES = {"sandbox.py"}
 
 
 def test_inv1_cap_execucio_de_codi_arbitrari():
-    """INV-1: el codi del kernel no fa cap CRIDA d'execució arbitrària, i una
-    eina ha de ser un callable pre-registrat (no codi del xat/doc/resultat)."""
+    """INV-1: el kernel no fa cap CRIDA d'execució arbitrària ni usa shell; només
+    sandbox.py pot llançar subprocess (docker, argv fix). Les eines són callables
+    pre-registrats, no codi del xat/doc/resultat."""
     for py in sorted(APP_DIR.glob("*.py")):
         src = py.read_text(encoding="utf-8")
-        for rx, label in _DANGER:
-            assert not rx.search(src), f"{py.name} fa una crida prohibida: {label} (INV-1)"
+        for rx, label in _DANGER_TOTS:
+            assert not rx.search(src), f"{py.name} conté prohibició: {label} (INV-1)"
+        if py.name not in _SUBPROC_PERMES:
+            for rx, label in _SUBPROC:
+                assert not rx.search(src), f"{py.name} usa {label} (INV-1)"
 
 
 def test_inv1_eina_no_callable_rebutjada(tool_kernel):

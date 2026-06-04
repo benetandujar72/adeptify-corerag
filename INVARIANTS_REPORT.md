@@ -10,9 +10,9 @@ Leyenda: ✅ pasa · ❌ falla · ⏳ pendiente · ⚠️ parcial
 
 | INV | Enunciado | Estado | Evidencia |
 |---|---|---|---|
-| INV-1 | El kernel nunca ejecuta código arbitrario (chat/doc/resultado) | ✅ | `test_invariants.py::test_inv1_cap_execucio_de_codi_arbitrari` (escaneo de `app/*.py`: sin `eval(`/`exec(`/`subprocess`/`os.system(`/`__import__(`/`pickle.load`) + `test_inv1_eina_no_callable_rebutjada` (registrar fn no-callable → `ArbitraryCodeError`). Las tools son callables pre-registrados. |
+| INV-1 | El kernel nunca ejecuta código arbitrario (chat/doc/resultado) | ✅ | `test_inv1_cap_execucio_de_codi_arbitrari` (escaneo `app/*.py`: sin `eval(`/`exec(`/`os.system(`/`shell=True`/`__import__(`/`pickle.load`; `subprocess` solo en `sandbox.py`, argv fijo sin shell) + `test_inv1_eina_no_callable_rebutjada`. **Ejecución**: sandbox sin shell → `subprocess(["sh"])` da `FileNotFoundError` (verificado en vivo). Tools = callables pre-registrados. |
 | INV-2 | RBAC en el kernel de herramientas, nunca en el LLM | ✅ | `test_invariants.py::test_inv2_rbac_al_kernel` + `test_tools.py::test_inv2_rbac_al_kernel_viewer_no_escriu`: `ToolKernel.invoke` llama `policy.enforce` ANTES de ejecutar; `executed_count==0` tras denegar. |
-| INV-3 | Zero egress (regla de red, no de app) | ⚠️ (capa app) | `test_invariants.py::test_inv3_zero_egress_rebutja_extern`: `ModelRouter(base_url=api.openai.com)` → `ExternalEndpointError`; `external_calls()==0`. **Pendiente fase de red** (firewall/egress a nivel host) → ver SECURITY_LOG. Compose: BD/kernel solo en `127.0.0.1`. |
+| INV-3 | Zero egress absoluto (regla de red, no de app) | ✅ (namespace+app) | App: `test_inv3_zero_egress_rebutja_extern` (`api.openai.com`→error; `external_calls()==0`). **Namespace** (verificado en vivo): sandbox `--network none`; `socket(AF_INET)`→`PermissionError` por seccomp; AF_UNIX permitido. Compose: loopback `127.0.0.1`. **Belt restante (STOP-4)**: regla nftables/iptables del host como capa extra → fase de red con aprobación. |
 | INV-4 | Ningún agente crea/modifica/borra agentes en runtime sin definición firmada | ✅ | `test_invariants.py::test_inv4_sense_eines_dinamiques` (registrar tool fuera de allowlist → `AllowlistError`) + `test_allowlist.py::test_allowlist_manipulada_es_rebutjada` (firma GPG inválida → `AllowlistError`). Sin descubrimiento dinámico. |
 | INV-5 | Secretos en vault de proceso; nunca en el contexto del modelo | ✅ | `test_invariants.py::test_inv5_cap_secret_al_context_del_model`: `assert_no_secrets(context, vault)` pasa para contexto limpio y lanza si un valor del vault aparece. El prompt builder no recibe el vault. |
 
@@ -62,7 +62,17 @@ Evidencia: batería completa `92 passed` (compose, Python 3.12.13, con `detect-s
 
 **Refuerzo de invariantes**: INV-1 ahora también con guardrails de injection (contenido `<DATA>` nunca se ejecuta); INV-5 reforzada con el filtro de secretos antes del contexto (`test_inv5_*` + `test_secrets_filter`).
 
-**Pendiente F2 (incremento 2)**: sandbox de ejecución K4.1–K4.5 (contenedor efímero, seccomp, cgroups v2, `--network none`, sin shell). Cierra INV-1 (execve bloqueado) e INV-3 (egress por namespace) a nivel de ejecución.
+### F2 incremento 2 — sandbox de ejecución (verificado en vivo)
+
+Config unit-testada (`test_sandbox_config.py`) + verificación live con `docker run` (evidencia en SECURITY_LOG):
+
+| # | Subfuncionalidad | Estado | Evidencia |
+|---|---|---|---|
+| K4.1 | Contenedor efímero por invocación riesgo ≥2 (destruido al terminar) | ✅ | `--rm` + `requereix_sandbox(risk≥2)`; live: `docker ps -a` sin residual |
+| K4.2 | seccomp restrictivo + capabilities mínimas | ✅ | `seccomp.json` (deny ptrace/mount/…; `socket(AF_INET)`→EPERM) + `--cap-drop ALL` + `no-new-privileges`; live: `PermissionError` |
+| K4.3 | Egress denegado por namespace (solo loopback/Unix) | ✅ | `--network none`; live: AF_INET bloqueado, AF_UNIX permitido |
+| K4.4 | cgroups v2 (CPU 0.5 / mem 256MB / 30s / 32 PIDs) | ✅ | flags `--cpus/--memory(=swap)/--pids-limit`; live: alloc >256MB → **exit 137 (OOM)**; wall-clock por timeout del runner |
+| K4.5 | Sin shell de host en la imagen del sandbox | ✅ | Dockerfile elimina `sh/bash/dash`; live: `subprocess(["sh"])` → `FileNotFoundError` |
 
 ## Notas / pendientes declarados
 - **INV-3 a nivel de RED**: en F1 está garantizada la capa de aplicación (rechazo de endpoints no-LAN + `external_calls=0`) y el aislamiento loopback del compose. La **regla de red/firewall del host** (egress) es una acción de la lista STOP-4 → fase de red dedicada, con aprobación humana.
