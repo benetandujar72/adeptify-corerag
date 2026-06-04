@@ -1,0 +1,17 @@
+version: "1"
+tools:
+  - id: echo.info
+    risk: info
+    descripcio: "Retorna un missatge estàtic (diagnòstic)"
+  - id: fs.read_synthetic
+    risk: read
+    descripcio: "Llegeix un document sintètic per id"
+  - id: kv.put_local
+    risk: write-local
+    descripcio: "Desa un parell clau/valor a la memòria local del tenant"
+  - id: notify.external
+    risk: write-external
+    descripcio: "Envia una notificació a un sistema extern (stub)"
+  - id: fs.delete_all
+    risk: irreversible
+    descripcio: "Esborrat massiu irreversible — mai permès per defecte"

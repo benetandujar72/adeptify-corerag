@@ -1,0 +1,8 @@
+version: "1"
+models:
+  - name: "qwen2.5:7b"
+    descripcio: "Model general local (Ollama)"
+  - name: "gemma3:12b"
+    descripcio: "Model de qualitat lingüística local (Ollama)"
+  - name: "mistral:7b"
+    descripcio: "Model alternatiu local"

@@ -1,0 +1,13 @@
+# Secrets locals del kernel — MAI versionats (INV-5).
+.env
+
+# Artefactes de Python.
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# La clau PÚBLICA de l'allowlist SÍ s'ha de versionar: la verificació GPG de
+# l'allowlist la necessita (la regla global `*.asc` del repo l'excloïa).
+# La clau PRIVADA mai surt del contenidor efímer de signatura.
+!allowlist/pubkey.asc

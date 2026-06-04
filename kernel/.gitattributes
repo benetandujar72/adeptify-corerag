@@ -1,0 +1,9 @@
+# L'allowlist es signa amb GPG sobre els bytes EXACTES: cap conversió de final de
+# línia (CRLF) ni filtres, o la signatura deixaria de validar en fer checkout.
+allowlist/tools.yaml -text
+allowlist/tools.yaml.sig -text
+allowlist/pubkey.asc -text
+allowlist/models.yaml -text
+
+# Els scripts d'init de Postgres han de tenir finals de línia LF (els executa bash).
+db/init/*.sh text eol=lf

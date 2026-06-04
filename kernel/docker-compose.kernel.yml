@@ -1,0 +1,38 @@
+# Secure Agent Kernel — stack AÏLLAT que puja "el core sol" amb dades sintètiques.
+# BD només a loopback; cap port exposat fora de la LAN (INV-3, capa de xarxa: F-red).
+name: adeptify-kernel
+
+services:
+  kerneldb:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kernel_admin
+      POSTGRES_PASSWORD: ${KERNEL_DB_PASSWORD:?cal definir KERNEL_DB_PASSWORD al .env}
+      POSTGRES_DB: kernel
+      # L'usa l'script d'init per crear el rol d'app no-superusuari.
+      KERNEL_APP_PASSWORD: ${KERNEL_APP_PASSWORD:?cal definir KERNEL_APP_PASSWORD al .env}
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - kerneldata:/var/lib/postgresql/data
+    ports: ["127.0.0.1:5547:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kernel_admin -d kernel"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  kernel:
+    build: .
+    restart: unless-stopped
+    environment:
+      ENTORN: dev
+      KERNEL_DB_URL: postgresql://kernel_app:${KERNEL_APP_PASSWORD:?}@kerneldb:5432/kernel
+      KERNEL_CAPABILITY_SECRET: ${KERNEL_CAPABILITY_SECRET:?cal definir KERNEL_CAPABILITY_SECRET al .env}
+    depends_on:
+      kerneldb:
+        condition: service_healthy
+    ports: ["127.0.0.1:8091:8000"]
+
+volumes:
+  kerneldata:

@@ -1,0 +1,25 @@
+# Secure Agent Kernel — dependències mínimes (Python 3.12).
+# Totes del stack aprovat o ja presents a corerag. Superfície mínima: SENSE pila ML,
+# SENSE frameworks d'agent (LangChain/AutoGen/CrewAI), SENSE proveïdors cloud.
+
+# Web / API
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
+
+# Client HTTP (router de models locals: Ollama/vLLM OpenAI-compat)
+httpx==0.28.1
+
+# Base de dades (partició per tenant/sessió amb RLS)
+psycopg[binary]==3.2.3
+
+# Capability tokens JWT de vida curta (ja vetat a corerag; mínima superfície vs python-jose)
+PyJWT==2.10.1
+
+# Allowlist firmada GPG i parseig segur de YAML (del stack aprovat)
+python-gnupg==0.5.4
+strictyaml==1.7.3
+
+# Tests
+pytest==8.3.4
