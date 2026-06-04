@@ -33,6 +33,14 @@ class KernelSettings(BaseSettings):
     capability_issuer: str = "adeptify-kernel"
     capability_audience: str = "adeptify-tools"
 
+    # ── Compuerta d'aprovació humana (F3 · K6.1/K6.4) ──
+    # El secret REAL viu al vault (KERNEL_APPROVAL_SECRET); aquí només paràmetres.
+    approval_token_ttl_s: int = 300       # vida del token d'aprovació humà
+    approval_window_s: float = 60.0       # K6.4 finestra anti-fatiga
+    approval_max_per_window: int = 5      # K6.4 màx. aprovacions per finestra (>5 → cooldown)
+    approval_cooldown_s: float = 300.0    # K6.4 durada del cooldown
+    approval_audience: str = "adeptify-approval"
+
     # ── Allowlist d'eines firmada GPG (K3.1) ──
     allowlist_path: str = "/app/allowlist/tools.yaml"
     allowlist_sig_path: str = "/app/allowlist/tools.yaml.sig"

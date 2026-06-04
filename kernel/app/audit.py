@@ -21,6 +21,8 @@ PROPOSED = "PROPOSED"
 EXECUTED = "EXECUTED"
 DENIED = "DENIED"
 ESCALATED = "ESCALATED"
+PENDING_APPROVAL = "PENDING_APPROVAL"  # F3 · K6.1 — acció ≥2 a l'espera d'aprovació humana
+APPROVED = "APPROVED"                  # F3 · K6.1 — aprovació humana enregistrada
 
 
 def _canonical(obj: object) -> str:

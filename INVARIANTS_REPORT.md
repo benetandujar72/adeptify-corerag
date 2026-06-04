@@ -74,6 +74,47 @@ Config unit-testada (`test_sandbox_config.py`) + verificación live con `docker 
 | K4.4 | cgroups v2 (CPU 0.5 / mem 256MB / 30s / 32 PIDs) | ✅ | flags `--cpus/--memory(=swap)/--pids-limit`; live: alloc >256MB → **exit 137 (OOM)**; wall-clock por timeout del runner |
 | K4.5 | Sin shell de host en la imagen del sandbox | ✅ | Dockerfile elimina `sh/bash/dash`; live: `subprocess(["sh"])` → `FileNotFoundError` |
 
+## F3-CORE — el humano en el bucle (incremento 1)
+
+Evidencia: batería completa **128 passed** (124 non-RLS + 4 RLS, Python 3.12.13, compose con BD RLS), 2026-06-04. `test_approval.py`: 32 tests.
+
+| # | Subfuncionalidad | Estado | Evidencia (test) |
+|---|---|---|---|
+| K6.1 | propose→approve: riesgo ≥2 sin token → PENDING_APPROVAL; no ejecuta | ✅ | `test_accio_risc_2_sense_aprovacio_es_pending` (`executed_count==0`), `test_accio_risc_2_amb_token_s_executa` |
+| K6.1 | Token ligado a la acción exacta (anti confused-deputy/replay) | ✅ | `test_token_d_altra_accio_no_executa`, `test_token_no_lliga_amb_altra_accio`, `test_request_id_determinista_i_sensible_als_args` |
+| K6.1 | Doble validación nivel 4 (2 aprobadores distintos) | ✅ | `test_nivell_4_necessita_dos_aprovadors_distints`, `test_nivell_4_una_aprovacio_no_executa` |
+| K6.2 | Resumen NL ≤3 frases (qué hace / qué datos / reversibilidad), sin valores | ✅ | `test_resum_natural_tres_frases_i_reversibilitat`, `test_resum_no_filtra_valors_dels_args` |
+| K6.4 | Anti-fatiga: >5 aprob/60s → cooldown + alerta admin | ✅ | `test_anti_fatiga_bloqueja_la_sisena_en_60s`, `::_finestra_lliscant`, `::_cooldown_caduca` |
+| K9.2 | Cierre: PENDING_APPROVAL → APPROVED → EXECUTED; cadena verificable | ✅ | `test_cierre_auditoria_k92` |
+| — | Token de aprobación ≠ capability (secreto y audiencia separados) | ✅ | `test_capability_token_no_serveix_com_aprovacio`, `test_token_falsificat_rebutjat`, `test_token_caducat_rebutjat` |
+
+**Verificación clave del backlog F3** (INV-2 en la capa de herramientas, no en el modelo):
+`test_inv2_rbac_abans_que_aprovacio` — un `viewer` que pide una escritura recibe `PolicyDenied`
+en el kernel de herramientas (RBAC primero), **no** `ApprovalRequired`: la aprobación nunca
+elude el RBAC. (`executed_count==0`.)
+
+### Red-team adversarial F3-CORE (3 confirmados → CERRADOS, 0 refutados, 4 limpios)
+
+| Refuerzo | Antes | Ahora | Evidencia |
+|---|---|---|---|
+| INV-2/F3 fail-closed | `gate=None` saltaba la compuerta ≥2 | sin gate ⇒ `ApprovalError` (fail-closed); opt-out `APPROVAL_DISABLED` auditable | `test_redteam1_fail_closed_sense_gate`, `::_opt_out_explicit_executa` |
+| K6.3 distinción de aprobadores | `approver_id` sin normalizar | `_normalitza_aprovador` (strip+casefold, rechaza vacío) | `test_redteam2_aprovador_normalitzat_no_falseja_distincio`, `::_buit_o_invalid_rebutjat` |
+| INV-1/INV-4 inmutabilidad eina | `Tool` mutable (swap de `fn`) | `@dataclass(frozen=True)` + guardia anti-reescritura en `register()` | `test_redteam3_tool_es_immutable`, `::_no_reescriptura_eina_registrada` |
+
+Limpios (defensa verificada por el verificador independiente): forja de token (alg=none/HS/
+secreto/audiencia), replay/confused-deputy, RBAC-bypass vía aprobación, fuga de secretos o
+inyección en el resumen/auditoría. Cierre confirmado reproduciendo los 3 PoCs originales →
+los 3 **bloqueados**.
+
+### Impacto en las 5 invariantes
+- **INV-1** reforzada: `Tool` inmutable (no swap de `fn` tras aprobación); `approval.py` sin
+  eval/exec/subprocess (cubierto por `test_inv1_cap_execucio_de_codi_arbitrari`).
+- **INV-2** confirmada: RBAC se evalúa antes que la compuerta; la aprobación es capa adicional,
+  nunca sustituto del rol (red-team RBAC-bypass = limpio).
+- **INV-4** reforzada: `register()` rechaza reescritura de una herramienta ya registrada.
+- **INV-3 / INV-5** sin cambios de superficie; el secreto de aprobación vive en el vault y no
+  entra en el contexto del modelo (resumen NL sin secretos ni valores).
+
 ## Notas / pendientes declarados
 - **INV-3 a nivel de RED**: en F1 está garantizada la capa de aplicación (rechazo de endpoints no-LAN + `external_calls=0`) y el aislamiento loopback del compose. La **regla de red/firewall del host** (egress) es una acción de la lista STOP-4 → fase de red dedicada, con aprobación humana.
 - **mTLS Core↔Suite** (CORE_SERVICE_TOKEN): fuera del alcance de F1 (kernel solo); fase posterior.

@@ -130,3 +130,87 @@ INV-1 test refinado en consecuencia. Verificación live (`docker run` directo):
 Batería: **92 non-RLS + 4 RLS** verde (py3.12). `--network none` es per-contenedor (namespace),
 NO toca el firewall del host → sin STOP-4. La regla de red del host queda como belt adicional
 (STOP-4, pendiente de aprobación).
+
+---
+
+## 2026-06-04 · F3 — "el humano en el bucle y el cumplimiento" (PLAN)
+
+Maquinaria en `adeptify-corerag` (core); semántica de dominio (PII de menores) en
+`adeptify-suiterag` (suite). Frontera de proceso mTLS + CORE_SERVICE_TOKEN.
+
+### Incrementos previstos
+1. **F3-CORE** (pure-Python, sin STOP): K6.1 propose→approve (acción riesgo ≥2 →
+   PENDING_APPROVAL; sin token de aprobación NO ejecuta) · K6.2 diff/resumen NL (≤3
+   frases: qué hace, qué datos toca, reversibilidad) · K6.4 anti-fatiga (>5 aprob/60s →
+   cooldown + aviso admin) · K9.2 cierre (registro propuesto/ejecutado para todo ≥2).
+2. **F3-SUITE** (PII): K2.4 políticas PII menores (deny salvo tutor/admin; opt-in
+   dirección auditado) · K6.3 doble validación nivel 4 (dos roles distintos) · K6.5
+   marcado art.50 irrenunciable · K7.3 DLP Presidio (regex fallback si no hay modelo) ·
+   K7.5 clasificador contenido inapropiado local · K8.2 retención/purga + derecho al
+   olvido · K9.3 export auditoría (art.14) + K9.4 alertas de anomalías.
+3. **Frontera mTLS** Core↔Suite + test de contrato en CI (petición core sin mTLS no
+   accede a datos del suite).
+
+### STOP gates F3 (a respetar)
+- Conectores reales (Alèxia/Workspace/banca): NUNCA producción/datos reales sin "sí";
+  solo sandbox/sintético.
+- Opt-in de PII con datos reales: exige EIPD/DPD validados.
+- mTLS: generar/instalar certificados es infra; si toca red/host → mostrar y esperar "sí".
+
+### Decisión de deps
+- Presidio (stack aprobado) para K7.3, con DLP regex de respaldo (evita bloqueo por
+  descarga de modelo spaCy). cryptography para mTLS (verificar si ya está; si no, STOP-5).
+
+### Estado
+Plan registrado. Implementación pendiente de reanudar tras `/compact` (estado completo
+en git: rama feat/secure-kernel-f1 @ 7ba8b0e + este log + INVARIANTS_REPORT.md).
+
+---
+
+## 2026-06-04 · F3-CORE — Ejecución (incremento 1: la compuerta humana)
+
+Maquinaria pure-Python en `adeptify-corerag` (sin STOP gate). Sin dependencias nuevas
+(solo PyJWT/hashlib/secrets, ya en el stack). **Sin push** (F3 exige "sí" → STOP-2).
+
+### Implementación (`kernel/app/`)
+- **`approval.py`** (nuevo) — `ApprovalGate` (propose→approve→verify_token), `request_id`
+  determinista = SHA-256(sesión+tenant+tool+args+riesgo), `resum_natural` (K6.2, 3 frases),
+  `aprovacions_requerides` (≥2→1, nivel 4→2 distintos), anti-fatiga (K6.4).
+- **`tools.py`** — `ToolKernel` gana `approval_gate`; `invoke()` aplica la compuerta DESPUÉS
+  del RBAC (INV-2) y ANTES de capability/ejecución; `request_id_for()` para el orquestador.
+- **`orchestrator.py`** — `run(..., approvals=)`; `ApprovalRequired` → `escalated=True`.
+- **`errors.py`** — `ApprovalRequired` (escalado, lleva la request) / `ApprovalError` /
+  `ApprovalRateLimited`. **`audit.py`** — estados `PENDING_APPROVAL` / `APPROVED`.
+- **`config.py` / `.env.example`** — TTL/ventana/cooldown + `KERNEL_APPROVAL_SECRET`
+  (secret separado del de capability; vive en el vault — INV-5).
+
+### Batería (compose, Python 3.12.13, con BD RLS)
+- `docker compose ... run --rm --build kernel pytest` → **128 passed** (124 non-RLS + 4 RLS).
+- `test_approval.py`: 32 tests (26 K6.x + 6 regresiones del red-team).
+- Criterios clave verificados con evidencia: acción nivel 2 sin aprobación ⇒ `ApprovalRequired`
+  (`executed_count==0`); nivel 4 con una sola aprobación NO se ejecuta; token ligado a la
+  acción exacta (anti confused-deputy); **INV-2**: viewer→write da `PolicyDenied` en la capa
+  de herramientas, no `ApprovalRequired` (el RBAC va primero y la aprobación no lo elude).
+
+### Red-team adversarial (workflow, 7 clases de ataque × verificación independiente)
+Resultado: **3 confirmados (CRÍTICOS) · 0 refutados · 4 limpios**. Limpios (defensa
+verificada): forja de token (alg=none/HS/secreto/aud), replay/confused-deputy, RBAC-bypass
+vía aprobación, fuga de secretos/inyección en el resumen/auditoría. Confirmados y **CERRADOS**:
+
+| # | Hallazgo | Causa | Corrección | Evidencia |
+|---|---|---|---|---|
+| 1 | `approval_gate=None` saltaba la compuerta para riesgo ≥2 (footgun de config) | gate opcional, default silencioso | **Fail-closed**: sin gate, riesgo ≥2 → `ApprovalError`; opt-out EXPLÍCITO `APPROVAL_DISABLED` (auditable) | `test_redteam1_*`; PoC original → `ATAC#1 BLOQUEJAT (executed=0)` |
+| 2 | Variantes de mayúsc./espacios del `approver_id` falseaban "2 aprobadores distintos" (nivel 4) | sin normalizar el id | `_normalitza_aprovador` (strip+casefold, rechaza vacío/no-str); ventana anti-fatiga a `<=` | `test_redteam2_*`; PoC → `'Alice'/'alice'=1 sol aprovador → PENDING` |
+| 3 | `Tool` mutable → sustituir `fn` tras la aprobación (INV-1/INV-4) | `@dataclass` sin frozen | `@dataclass(frozen=True)` + guardia anti-reescritura en `register()` | `test_redteam3_*`; PoC → `Tool immutable (FrozenInstanceError)` |
+
+Verificación de cierre: reproducidos los 3 PoCs originales contra el código pegado → los 3
+**bloqueados**. Batería completa sigue en **128 passed**.
+
+### Secretos (DoD)
+- gitleaks **git-mode: "no leaks found"** (9 commits + working tree trackeado).
+- `.env` y `kernel/.env` están gitignored y **no trackeados** (`git ls-files` vacío); los
+  únicos hits de `--no-git` son esos `.env` locales, nunca en git. Ficheros nuevos limpios.
+
+### Estado de publicación
+Rama `feat/secure-kernel-f1`, **sin commit/push** (espera "sí" humano — STOP-2). Siguientes
+incrementos F3: F3-SUITE (PII de menores) y frontera mTLS Core↔Suite (con sus STOP gates).

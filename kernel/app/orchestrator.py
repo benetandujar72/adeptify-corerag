@@ -9,9 +9,9 @@ es comproven a cada pas. Si s'exhaureix el budget o el temps, s'ESCALA a humà.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
-from .errors import BudgetExceeded, SessionTimeout, StepLimitExceeded
+from .errors import ApprovalRequired, BudgetExceeded, SessionTimeout, StepLimitExceeded
 from .session import Session
 from .tools import ToolKernel
 
@@ -60,7 +60,10 @@ class Orchestrator:
         self._tools = tool_kernel
         self._clock = clock  # rellotge monotònic injectable (tests deterministes)
 
-    def run(self, session: Session, plan: Plan) -> RunResult:
+    def run(self, session: Session, plan: Plan,
+            approvals: Mapping[str, str] | None = None) -> RunResult:
+        """Executa el PLA. `approvals` mapeja request_id → token d'aprovació humà
+        (F3 · K6.1): per a passos de risc ≥2 sense token, s'ESCALA a humà."""
         obs: list[Observation] = []
         # PLA BUIT ⇒ no s'executa cap eina.
         for i, step in enumerate(plan.steps, start=1):
@@ -72,11 +75,19 @@ class Orchestrator:
             except (SessionTimeout, StepLimitExceeded) as exc:
                 return RunResult(len(plan.steps), obs, completed=False,
                                  escalated=True, escalation_reason=str(exc))
+            # F3 · K6.1: recupera el token d'aprovació d'aquest pas (si n'hi ha).
+            token = None
+            if approvals:
+                rid = self._tools.request_id_for(
+                    session=session, tool_id=step.tool_id, args=step.args)
+                token = approvals.get(rid)
             # act + observe
             try:
-                result = self._tools.invoke(session=session, tool_id=step.tool_id, args=step.args)
+                result = self._tools.invoke(
+                    session=session, tool_id=step.tool_id, args=step.args, approval_token=token)
                 obs.append(Observation(i, step.tool_id, ok=True, result=result))
-            except BudgetExceeded as exc:
+            except (BudgetExceeded, ApprovalRequired) as exc:
+                # BUDGET_EXCEEDED o PENDING_APPROVAL → l'humà al bucle; NO s'executa res.
                 return RunResult(len(plan.steps), obs, completed=False,
                                  escalated=True, escalation_reason=str(exc))
             except Exception as exc:  # política/esquema/allowlist → observació d'error i atura

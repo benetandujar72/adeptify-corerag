@@ -57,3 +57,30 @@ class ProvenanceError(KernelError):
 
 class SandboxError(KernelError):
     """Error en el sandbox d'execució (F2 · K4.x)."""
+
+
+class ApprovalRequired(KernelError):
+    """Acció de risc ≥2 proposada sense aprovació humana vàlida (F3 · K6.1).
+
+    NO és un error de fallada: és l'ESCALAT a humà (l'humà al bucle). Porta la
+    `ApprovalRequest` (amb el resum en llenguatge natural) perquè un humà decideixi.
+    El kernel NO executa res mentre l'estat sigui PENDING_APPROVAL.
+    """
+
+    def __init__(self, request: object) -> None:
+        self.request = request
+        rid = getattr(request, "request_id", "?")
+        tool_id = getattr(request, "tool_id", "?")
+        req_n = getattr(request, "aprovacions_requerides", "?")
+        super().__init__(
+            f"PENDING_APPROVAL: «{tool_id}» requereix {req_n} aprovació(ns) humana(es) "
+            f"(request_id={rid[:12] if isinstance(rid, str) else rid}…)"
+        )
+
+
+class ApprovalError(KernelError):
+    """Token d'aprovació invàlid, caducat o que no lliga amb l'acció (F3 · K6.1)."""
+
+
+class ApprovalRateLimited(KernelError):
+    """Anti-fatiga d'aprovacions: aprovador en cooldown o supera el llindar (F3 · K6.4)."""
