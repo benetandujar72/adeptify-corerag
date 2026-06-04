@@ -45,3 +45,15 @@ class ExternalEndpointError(KernelError):
 
 class ArbitraryCodeError(KernelError):
     """Intent d'executar codi arbitrari (INV-1)."""
+
+
+class McpPinError(KernelError):
+    """Servidor MCP sense pin conegut o amb hash que no coincideix (K3.3)."""
+
+
+class ProvenanceError(KernelError):
+    """Fragment RAG sense procedència vàlida o amb hash alterat (K8.4)."""
+
+
+class SandboxError(KernelError):
+    """Error en el sandbox d'execució (F2 · K4.x)."""

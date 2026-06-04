@@ -82,5 +82,37 @@ risk · session (immutable+budget+deadline) · policy (deny-by-default) · capab
   aprobación humana explícita en una fase de red dedicada. NO ejecutada.
 
 ### Estado de publicación
-- Rama local `feat/secure-kernel-f1`. **STOP**: no se ha hecho `git push` ni se ha
-  creado/modificado ningún remoto (esperando "sí" humano).
+- Rama `feat/secure-kernel-f1`. **Push APROBADO por humano ("procede")** → publicado a
+  `origin` (remoto privado) el 2026-06-04. No toca `master` ni la visibilidad.
+
+---
+
+## 2026-06-04 · F2 — "encerrar el poder del agente"
+
+Plan: dos incrementos. (1) defensas anti prompt-injection + de datos (pure-Python, sin
+STOP); (2) sandbox de ejecución efímero (K4.x) con seccomp/cgroups/`--network none`.
+
+### Decisiones F2
+- **K4.3 zero-egress**: a nivel de **namespace** del contenedor (`--network none` por
+  invocación). NO se toca el firewall del host (eso sería STOP-4) → sin STOP.
+- **K7.1 detector de injection**: **heurístico local** (sin descargar pesos de modelo)
+  → evita el STOP de descarga de guardrails. Banco reproducible de ~200 injections +
+  benignos; objetivo ≥95% detección, ≤5% FP, ≤20ms.
+- **K8.3**: `detect-secrets` (stack aprobado) + regex de alta precisión (sk-, claves).
+- Sin nuevos frameworks; deps nuevas al kernel: `detect-secrets` (del stack aprobado).
+
+### Incremento 1 (este paso): módulos `kernel/app/`
+guardrails.py (K5.4 system-prompt no eliminable · K7.1 detector · K7.2 <DATA> ·
+K7.4 sanitización) · secrets_filter.py (K8.3) · provenance.py (K8.4) · mcp_pin.py (K3.3).
+
+**Resultado incremento 1**: batería completa `92 passed` (compose, Python 3.12.13,
+`detect-secrets` instalado + BD RLS). Banco de injection: ≥95% detección, ≤5% FP, ≤20ms
+(200 inj / 120 benignos, reproducible). Hallazgo y corrección registrados:
+- El test naíf de INV-1 (scan por substring) marcaba `guardrails.py` por contener la
+  PALABRA `subprocess` dentro de un patrón de DETECCIÓN (no una llamada). Corregido:
+  el test ahora detecta CRIDAS reales (regex con lookbehind), no menciones.
+- `detect-secrets` con todos los plugins sobre-redactaba prosa (entropía/keyword).
+  Corregido: solo plugins de alta precisión (AWS/JWT/PrivateKey/…); el core es regex.
+
+**Pendiente (incremento 2)**: sandbox K4.1–K4.5 (contenedor efímero, seccomp, cgroups v2,
+`--network none`, sin shell). NO toca firewall del host (per-container) → sin STOP-4.

@@ -46,6 +46,24 @@ Leyenda: ✅ pasa · ❌ falla · ⏳ pendiente · ⚠️ parcial
 | tenant A no ve datos de tenant B (RLS, usuario sin privilegios) | ✅ | `test_rls.py::test_tenant_isolation` (conexión como `kernel_app`). |
 | UPDATE/DELETE en auditoría rechazado; cadena verificable <1s/1000 | ✅ | `test_rls.py::test_audit_update_delete_rebutjat`; `test_audit.py::test_verificacio_1000_entrades_sota_1s`. |
 
+## F2 — defensas anti-injection + de datos (incremento 1)
+
+Evidencia: batería completa `92 passed` (compose, Python 3.12.13, con `detect-secrets` + BD RLS), 2026-06-04.
+
+| # | Subfuncionalidad | Estado | Evidencia (test) |
+|---|---|---|---|
+| K5.4 | Inyección del system prompt de seguridad (no eliminable) | ✅ | `test_guardrails.py::test_security_prompt_sempre_primer`, `::test_security_prompt_no_eliminable_ni_falsejable` |
+| K7.1 | Detector de prompt injection (heurístico local) | ✅ | `test_guardrails.py::test_banc_injection_metriques`: **≥95% detección, ≤5% FP, ≤20ms** (banco 200 inj / 120 benignos, reproducible) |
+| K7.2 | Separación instrucción vs dato (`<DATA>` no ejecutable) | ✅ | `test_guardrails.py::test_wrap_untrusted_neutralitza_breakout` (anti-breakout del delimitador) |
+| K7.4 | Sanitización de resultados (truncado, control chars, NFC, zero-width) | ✅ | `test_guardrails.py::test_sanitize_*` |
+| K8.3 | Filtro de secretos antes del contexto (detect-secrets) | ✅ | `test_secrets_filter.py`: redacta `sk-…`/clave privada/asignaciones; registra tipo; sin sobre-redactar prosa |
+| K8.4 | Procedencia anti-envenenamiento del RAG (hash por chunk) | ✅ | `test_provenance.py`: descarta chunk con hash alterado o sin procedencia |
+| K3.3 | Pin/firma SHA-256 de servidores MCP locales | ✅ | `test_mcp_pin.py`: rechaza sin pin conocido o con descriptor modificado |
+
+**Refuerzo de invariantes**: INV-1 ahora también con guardrails de injection (contenido `<DATA>` nunca se ejecuta); INV-5 reforzada con el filtro de secretos antes del contexto (`test_inv5_*` + `test_secrets_filter`).
+
+**Pendiente F2 (incremento 2)**: sandbox de ejecución K4.1–K4.5 (contenedor efímero, seccomp, cgroups v2, `--network none`, sin shell). Cierra INV-1 (execve bloqueado) e INV-3 (egress por namespace) a nivel de ejecución.
+
 ## Notas / pendientes declarados
 - **INV-3 a nivel de RED**: en F1 está garantizada la capa de aplicación (rechazo de endpoints no-LAN + `external_calls=0`) y el aislamiento loopback del compose. La **regla de red/firewall del host** (egress) es una acción de la lista STOP-4 → fase de red dedicada, con aprobación humana.
 - **mTLS Core↔Suite** (CORE_SERVICE_TOKEN): fuera del alcance de F1 (kernel solo); fase posterior.
