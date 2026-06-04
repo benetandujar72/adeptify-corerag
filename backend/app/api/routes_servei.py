@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.registry import get_agent
 from app.core.config import Settings, get_settings
+from app.core.principis import AVIS_PROPOSTA, GUARDRAIL_HUMANISME
 from app.core.servei_auth import verifica_servei
 from app.rag.llm import get_llm_client
 
@@ -59,12 +60,6 @@ _SISTEMA_GENERIC = (
     "Escrius en català correcte i normatiu (IEC), sense castellanismes."
 )
 
-_GUARDA = (
-    "\n\nNORMES: proposes, no decideixes (un docent validarà la teva proposta). "
-    "Fonamenta't NOMÉS en els criteris i l'evidència aportats; no inventis dades "
-    "d'alumnes ni continguts aliens. Si manca informació, fes-ho explícit."
-)
-
 _REFORC_JSON = (
     "\n\nRespon EXCLUSIVAMENT amb un objecte JSON vàlid, sense text addicional ni "
     "blocs de codi."
@@ -92,6 +87,8 @@ class PropostaServeiResponse(BaseModel):
     agent_id: str | None = None
     model: str
     assistit_per_ia: bool = True
+    # Avís de transparència (art. 50 AI Act; C/2026/2826): revisió crítica humana.
+    avis: str = AVIS_PROPOSTA
 
 
 def _extreu_json(text: str) -> dict | None:
@@ -130,7 +127,9 @@ def _munta_messages(cos: PropostaServeiRequest) -> list[dict[str, str]]:
         sistema = f"{sistema}\n\n{cos.sistema.strip()}" if sistema else cos.sistema.strip()
     if not sistema:
         sistema = _SISTEMA_GENERIC
-    sistema += _GUARDA
+    # Humanisme digital (Conclusions UE C/2026/2826): el guardrail governa SEMPRE
+    # la generació (suport no substitució, transparència crítica de límits/biaixos).
+    sistema = f"{GUARDRAIL_HUMANISME}\n\n{sistema}"
     if cos.format_json:
         sistema += _REFORC_JSON
 

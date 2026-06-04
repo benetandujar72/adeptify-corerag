@@ -100,7 +100,11 @@ def _construeix_prompt(
         blocs_context.append(f"{ref}\n{r.contingut}")
     context = "\n\n".join(blocs_context) if blocs_context else "(sense context recuperat)"
 
-    sistema = agent.system_prompt
+    # Humanisme digital (Conclusions UE C/2026/2826; art. 14/50 AI Act): el
+    # guardrail emmarca SEMPRE la persona de l'agent (suport, no substitució).
+    from app.core.principis import GUARDRAIL_HUMANISME
+
+    sistema = f"{GUARDRAIL_HUMANISME}\n\n{agent.system_prompt}"
     if agent.bilingue and llengua == "es":
         sistema += "\n\nLa consulta està en castellà: respon en castellà."
 

@@ -103,6 +103,25 @@ def test_servei_context_arriba_al_prompt(client, monkeypatch, fake_llm):
     assert "12+9=21" in usuari
 
 
+def test_servei_guardrail_humanisme(client, monkeypatch, fake_llm):
+    """El guardrail d'humanisme digital (C/2026/2826) governa CADA proposta i la
+    resposta porta l'avís de transparència (art. 50)."""
+    _activa_token(monkeypatch)
+    r = client.post(
+        "/api/servei/proposta",
+        json={"instruccions": "Proposa una rúbrica."},
+        headers={"X-Service-Token": TOKEN},
+    )
+    assert r.status_code == 200
+    cos = r.json()
+    # Avís de transparència humà present a la resposta.
+    assert "C/2026/2826" in cos["avis"] and cos["assistit_per_ia"] is True
+    # El guardrail s'ha injectat al system prompt del model.
+    sistema = fake_llm.ultim_prompt[0]["content"]
+    assert "DONES SUPORT, NO SUBSTITUEIXES" in sistema
+    assert "C/2026/2826" in sistema
+
+
 def test_servei_agent_tool_calling_no_permes(client, monkeypatch, fake_llm):
     """Un agent de tool-calling (assistent_admin) no s'usa com a persona: cau al
     system genèric (no s'injecta el seu prompt agèntic)."""
