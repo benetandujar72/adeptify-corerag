@@ -212,5 +212,35 @@ Verificación de cierre: reproducidos los 3 PoCs originales contra el código pe
   únicos hits de `--no-git` son esos `.env` locales, nunca en git. Ficheros nuevos limpios.
 
 ### Estado de publicación
-Rama `feat/secure-kernel-f1`, **sin commit/push** (espera "sí" humano — STOP-2). Siguientes
-incrementos F3: F3-SUITE (PII de menores) y frontera mTLS Core↔Suite (con sus STOP gates).
+Rama `feat/secure-kernel-f1`, **push APROBADO ("procede")** → `ace2a4f` (remoto privado).
+
+---
+
+## 2026-06-05 · Red-team TOTAL i FINAL — troballes del CORE
+
+Assalt complet (12 objectius CORE+SUITE; vegeu `adeptify-suiterag/SECURITY_LOG.md` per al
+detall del SUITE). Veredicte de les 5 invariants: **INV-2/INV-3/INV-4/INV-5 HOLDS**;
+**INV-1 AT-RISK** (vegeu obert, sota). Al CORE:
+
+### Confirmat i TANCAT (aquest canvi)
+| Sev | Troballa | Correcció | Evidència |
+|---|---|---|---|
+| medium (hardening INV-2) | `PolicyEngine` desava `_allow`/`_deny` en LLISTES mutables → codi in-process podia afegir regles i escalar el RBAC | `app/policy.py`: `tuple(...)` immutable | `test_policy.py::test_redteam_politica_immutable_no_mutable_in_process` (125 passed) |
+
+NOTA: el bypass requereix execució de codi al procés del kernel (post-INV-1); l'autoritat de
+decisió segueix al kernel. És defensa en profunditat (elimina una via de tampering).
+
+### REFUTAT
+- INV-4 «mutació d'eines en runtime»: el `_tools` és mutable però no hi ha cap via des de
+  codi no fiable (xat/model/HTTP) per obtenir-ne referència; l'allowlist signada s'imposa al
+  registre. Hardening possible (frozen mapping), no bypass.
+
+### OBERT (declarat; requereix un increment dedicat)
+- **[CRITIC · INV-1 camí viu] Guardrails anti-injection = codi mort**: `app/guardrails.py`
+  (detect_injection, K5.4 system-prompt no eliminable, wrap_untrusted, sanitize_result) està
+  definit i unit-testejat al KERNEL però NO s'invoca al punt real de delegació a l'LLM
+  (`adeptify-corerag/backend/app/api/routes_servei.py`), que concatena instruccions+evidència
+  en cru i usa GUARDRAIL_HUMANISME (no el system-prompt no eliminable). El kernel no fa
+  eval/exec (cap RCE), però la injecció indirecta cap a l'LLM NO està mitigada al camí viu.
+  Pendent: cablejar els guardrails a `routes_servei.py` (anteposar SECURITY_SYSTEM_PROMPT,
+  `wrap_untrusted` a l'evidència, `detect_injection` fail-closed, `sanitize_result` a la sortida).

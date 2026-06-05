@@ -41,8 +41,10 @@ class PolicyEngine:
     """Avalua (rol, tool_id, risc, context). Deny explícit > allow > deny-by-default."""
 
     def __init__(self, allow_rules: Iterable[AllowRule], deny_rules: Iterable[DenyRule] = ()) -> None:
-        self._allow = list(allow_rules)
-        self._deny = list(deny_rules)
+        # tuples IMMUTABLES: la decisió RBAC del kernel no es pot alterar in-process
+        # afegint regles a _allow/_deny (hardening del red-team TOTAL · INV-2).
+        self._allow = tuple(allow_rules)
+        self._deny = tuple(deny_rules)
 
     def evaluate(
         self, *, role: str, tool_id: str, risk: RiskLevel | int,

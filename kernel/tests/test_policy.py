@@ -10,6 +10,15 @@ from app.risk import RiskLevel
 
 POL = default_policy()
 
+
+def test_redteam_politica_immutable_no_mutable_in_process():
+    """Red-team TOTAL (INV-2 hardening): les regles es desen en tuples IMMUTABLES;
+    cap codi in-process pot afegir una regla per escalar el RBAC del kernel."""
+    pe = PolicyEngine([AllowRule("viewer", RiskLevel.READ)])
+    assert isinstance(pe._allow, tuple) and isinstance(pe._deny, tuple)
+    with pytest.raises(AttributeError):
+        pe._allow.append(AllowRule("viewer", RiskLevel.WRITE_LOCAL))  # tuple: sense append
+
 # Matriu rol × risc → permès? (cobertura de la taula de decisió).
 MATRIU = [
     ("viewer", RiskLevel.INFO, True),

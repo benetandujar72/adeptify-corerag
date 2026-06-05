@@ -115,6 +115,16 @@ los 3 **bloqueados**.
 - **INV-3 / INV-5** sin cambios de superficie; el secreto de aprobación vive en el vault y no
   entra en el contexto del modelo (resumen NL sin secretos ni valores).
 
+## Red-team TOTAL (2026-06-05) — impacto en invariantes
+- **INV-2** reforzada: `PolicyEngine` guarda las reglas en **tuplas inmutables** (antes listas
+  mutables → tampering in-process). Test `test_policy.py::test_redteam_politica_immutable_*`.
+- **INV-1 (kernel)**: SIGUE ✅ — el kernel no hace eval/exec de ningún input. PERO el red-team
+  marcó AT-RISK el **camino vivo de inferencia** (`adeptify-corerag/backend/app/api/routes_servei.py`),
+  donde los guardrails anti-injection (`app/guardrails.py`) NO se invocan: la inyección indirecta
+  hacia el LLM no está mitigada en ese endpoint. Es **deuda de integración** (no una RCE del
+  kernel) → requiere un incremento dedicado para cablear los guardrails al camino vivo.
+- Las invariantes restantes (INV-3/INV-4/INV-5) → HOLDS (ver `SECURITY_LOG.md`).
+
 ## Notas / pendientes declarados
 - **INV-3 a nivel de RED**: en F1 está garantizada la capa de aplicación (rechazo de endpoints no-LAN + `external_calls=0`) y el aislamiento loopback del compose. La **regla de red/firewall del host** (egress) es una acción de la lista STOP-4 → fase de red dedicada, con aprobación humana.
-- **mTLS Core↔Suite** (CORE_SERVICE_TOKEN): fuera del alcance de F1 (kernel solo); fase posterior.
+- **mTLS Core↔Suite**: implementado en el SUITE (cliente + certs DEV + control fail-closed); la provisión de certs de PRODUCCIÓN y la activación en red es OPS (STOP-4).
