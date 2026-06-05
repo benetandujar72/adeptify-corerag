@@ -84,3 +84,17 @@ class ApprovalError(KernelError):
 
 class ApprovalRateLimited(KernelError):
     """Anti-fatiga d'aprovacions: aprovador en cooldown o supera el llindar (F3 · K6.4)."""
+
+
+class PlaybookError(KernelError):
+    """Playbook fora del registre signat, signatura invàlida, esquema de params
+    incorrecte, o intent de materialitzar un Plan no conforme (F4 · K10 / INV-4)."""
+
+
+class SchedulerError(KernelError):
+    """Tasca programada invàlida, signatura incorrecta o playbook inexistent (F4 · K11)."""
+
+
+class AgentDefError(KernelError):
+    """Definició d'agent fora del registre signat o graf de coordinació no conforme
+    (F4 · K13 / INV-4): cap agent s'instancia/modifica en runtime sense definició signada."""
