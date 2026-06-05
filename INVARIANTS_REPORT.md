@@ -126,6 +126,13 @@ los 3 **bloqueados**.
   `detect_injection` con rechazo 422 fail-closed (umbral 2, K7.1) y sanea la salida del modelo
   (`sanitize_result`, K7.4). Evidencia: `backend/tests/test_servei_guardrails.py` (8 tests);
   backend **111 passed, 2 xfailed**. Diferido (STOP): NER para nombres en texto libre.
+  **INCR.7b** (tras red-team adversarial del increment, 23 bypassos confirmados): `detect_injection`
+  ahora normaliza de forma robusta antes del match (NFKC + confusables→latín + strip
+  zero-width/combining + colapso de `\s`), cerrando homòglifos/zero-width/marcas combinables/field-split;
+  el anti-breakout de `<DATA>` cubre atributos (`</DATA x>`) y variantes Unicode del tag; reafirmación
+  de seguridad **al final** del system. Mirror en `kernel/app/guardrails.py`. Backend **118 passed**.
+  Sigue diferida (STOP → modelo ML): cobertura multilingüe (it/fr/de…) y paráfrasis libre del detector
+  heurístico (defensa en profundidad; las barreras ESTRUCTURALES system-no-eliminable + `<DATA>` se mantienen).
 - Las invariantes restantes (INV-3/INV-4/INV-5) → HOLDS (ver `SECURITY_LOG.md`).
 
 ## Notas / pendientes declarados

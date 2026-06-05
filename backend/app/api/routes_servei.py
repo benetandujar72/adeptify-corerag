@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from app.agents.registry import get_agent
 from app.core.config import Settings, get_settings
 from app.core.guardrails import (
+    SECURITY_REAFIRMACIO,
     SECURITY_SYSTEM_PROMPT,
     detect_injection,
     sanitize_result,
@@ -149,6 +150,10 @@ def _munta_messages(cos: PropostaServeiRequest) -> list[dict[str, str]]:
     sistema = f"{SECURITY_SYSTEM_PROMPT}\n\n{sistema}"
     if cos.format_json:
         sistema += _REFORC_JSON
+    # El cridador (cos.sistema) ha quedat al MIG; reafirmem les regles de seguretat
+    # AL FINAL perquè cap text annexat pel cridador no en sigui l'última paraula
+    # (les instruccions més recents solen pesar més en molts LLMs).
+    sistema = f"{sistema}\n\n{SECURITY_REAFIRMACIO}"
 
     parts = [cos.instruccions.strip()]
     # K7.2 · Tot el que no és la INSTRUCCIÓ del cridador és DADA NO FIABLE

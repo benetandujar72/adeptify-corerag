@@ -283,3 +283,35 @@ NO són codi mort al punt de delegació real a l'LLM.
   l'LLM (estructural via <DATA> + system no eliminable, i fail-closed al canal d'instrucció).
   El kernel seguia sense fer eval/exec; ara el forat d'integració queda tancat per als vectors
   demostrats. Resta diferit (STOP): NER per a noms en text lliure.
+
+---
+
+## 2026-06-05 · INCR.7b-CORE — endurit post red-team adversarial de l'increment
+
+Després de cablejar els guardrails (INCR.7), un red-team adversarial (6 lents × verificació
+independent) va confirmar **23 bypassos**; al CORE, els accionables (no pures limitacions
+heurístiques) eren tots la MATEIXA causa arrel: **normalització Unicode incompleta** a
+`detect_injection`/`wrap_untrusted` i ordre del system. Tancats en aquest canvi (mirall a
+`kernel/app/guardrails.py`):
+
+| Sev | Bypass | Correcció |
+|---|---|---|
+| high | **Field-split**: verb a `instruccions` + objecte a `sistema`; el `\n` de juncIó travessava `.{0,N}` (sense DOTALL) → score < 2 | `_normalitza_deteccio` col·lapsa tot `\s+` (inclòs `\n`) abans del match |
+| high | **Homòglifs** ciríl·lic/grec evadeixen `detect_injection` (només NFC) | NFKC + mapa `_CONFUSABLES` → ASCII llatí |
+| high | **Zero-width** intercalat dins paraules clau | strip de `_INVISIBLES` abans del match (no només a la sortida) |
+| high | **`</DATA x>`** (atribut) trenca l'embolcall; variants fullwidth/homòglif del tag | regex `<\s*/?\s*DATA\b[^>]*>` + escapa TOTS els angles (ASCII+homòglif) dins la dada |
+| medium | Accents combinables baixen el score sota el llindar | NFD + strip marques (Mn) dins `_normalitza_deteccio` |
+| medium | `cos.sistema` annexat com a ÚLTIM bloc del system (més pes en LLMs) | `SECURITY_REAFIRMACIO` no eliminable AL FINAL (seguretat queda 1a **i** última) |
+| medium | `sanitize_result` deixava passar invisibles no-Cf (Hangul filler, Braille, VS, NBSP) | `_INVISIBLES` ampliat + col·lapsa espais Zs/Zl/Zp |
+
+**Verificació**: `backend/tests/test_servei_guardrails.py` +7 regressions (field-split, homòglif,
+zero-width, combinables, breakout amb atribut, fullwidth, reafirmació final). Backend
+**118 passed, 2 xfailed**; kernel `test_guardrails`/`test_invariants`/`test_tools` verds (bench
+de detecció ≥95%/≤5% FP intacte).
+
+### OBERT i DECLARAT (limitació heurística irreductible → model ML, STOP)
+- **Cobertura multilingüe**: jailbreaks en idiomes no ca/es/en (it/fr/de…) i **paràfrasi lliure**
+  / sinònims que no disparen cap parell de paraules clau passen el detector. És defensa en
+  profunditat heurística; les barreres ESTRUCTURALS (system no eliminable + <DATA> + reafirmació
+  final) es mantenen. La cobertura semàntica completa requereix un classificador per model
+  (diferit darrere STOP humà). NO és una RCE del kernel (INV-1 estructural intacte).
