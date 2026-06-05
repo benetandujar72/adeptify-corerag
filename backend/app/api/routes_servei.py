@@ -21,14 +21,26 @@ import json
 import logging
 import re
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.agents.registry import get_agent
 from app.core.config import Settings, get_settings
+from app.core.guardrails import (
+    SECURITY_SYSTEM_PROMPT,
+    detect_injection,
+    sanitize_result,
+    wrap_untrusted,
+)
 from app.core.principis import AVIS_PROPOSTA, GUARDRAIL_HUMANISME
 from app.core.servei_auth import verifica_servei
 from app.rag.llm import get_llm_client
+
+# Llindar de rebuig al CANAL D'INSTRUCCIÓ: exigim ≥2 senyals d'injecció distints
+# per rebutjar (no 1), perquè en un domini d'avaluació una sola paraula com
+# «ignora» o «instruccions» apareix legítimament (p. ex. «valora si l'alumne
+# ignora les instruccions de l'exercici»). Dos senyals junts ja són un atac clar.
+_LLINDAR_INSTRUCCIO = 2
 
 logger = logging.getLogger("adeptify.servei")
 
@@ -130,16 +142,25 @@ def _munta_messages(cos: PropostaServeiRequest) -> list[dict[str, str]]:
     # Humanisme digital (Conclusions UE C/2026/2826): el guardrail governa SEMPRE
     # la generació (suport no substitució, transparència crítica de límits/biaixos).
     sistema = f"{GUARDRAIL_HUMANISME}\n\n{sistema}"
+    # K5.4 · System prompt de seguretat NO ELIMINABLE, sempre el primer. El
+    # cridador només pot AFEGIR (cos.sistema s'annexa), mai treure aquest prefix:
+    # garanteix que el model tracti <DATA>…</DATA> com a dada inert i ignori
+    # qualsevol ordre d'injecció vinguda del context (defensa estructural).
+    sistema = f"{SECURITY_SYSTEM_PROMPT}\n\n{sistema}"
     if cos.format_json:
         sistema += _REFORC_JSON
 
     parts = [cos.instruccions.strip()]
+    # K7.2 · Tot el que no és la INSTRUCCIÓ del cridador és DADA NO FIABLE
+    # (criteris del centre, evidència de l'alumnat): s'embolcalla amb <DATA>…</DATA>
+    # amb anti-breakout, de manera que cap text d'un document/evidència no pugui
+    # reescriure el comportament del model (injecció indirecta).
     if cos.criteris:
         linies = "\n".join(f"- {c.strip()}" for c in cos.criteris if c and c.strip())
         if linies:
-            parts.append("Criteris d'avaluació de referència del centre:\n" + linies)
+            parts.append("Criteris d'avaluació de referència del centre:\n" + wrap_untrusted(linies))
     if cos.evidencia and cos.evidencia.strip():
-        parts.append("Evidència / resposta a valorar:\n«" + cos.evidencia.strip() + "»")
+        parts.append("Evidència / resposta a valorar:\n" + wrap_untrusted(cos.evidencia.strip()))
     usuari = "\n\n".join(parts)
     return [
         {"role": "system", "content": sistema},
@@ -157,10 +178,43 @@ def proposta(
 
     Stateless: no desa res ni rep PII estructurada (només text d'evidència). La
     inferència és local (Ollama/vLLM); no contamina `crides_externes`.
+
+    Defensa contra injecció (K7.1, defensa en profunditat sobre el wrapping <DATA>):
+    - CANAL D'INSTRUCCIÓ (instruccions + system del cridador): és el canal que el
+      model interpreta com a ordre. Si hi detectem ≥2 senyals d'injecció distints
+      (jailbreak clar), REBUTGEM (422) i ho registrem — fail-closed.
+    - CANAL DE DADA (criteris + evidència): ja va embolcallat amb <DATA> i el
+      system de seguretat l'inertitza; aquí NO rebutgem (l'evidència d'un alumne
+      pot contenir legítimament paraules com «ignora»), només ho registrem.
     """
+    # ── K7.1 · Screening del canal d'instrucció (fail-closed) ─────────────────
+    canal_instruccio = f"{cos.instruccions}\n{cos.sistema or ''}"
+    v_instr = detect_injection(canal_instruccio, threshold=_LLINDAR_INSTRUCCIO)
+    if v_instr.is_injection:
+        logger.warning(
+            "servei.proposta REBUTJADA: injecció al canal d'instrucció score=%d matches=%s",
+            v_instr.score, ",".join(v_instr.matches),
+        )
+        raise HTTPException(
+            status_code=422,
+            detail="La instrucció conté senyals d'injecció de prompt; revisa-la.",
+        )
+    # ── K7.1 · Monitorització del canal de dada (no rebutja; <DATA> ja l'inertitza)
+    canal_dada = "\n".join([*cos.criteris, cos.evidencia or ""])
+    v_dada = detect_injection(canal_dada, threshold=1)
+    if v_dada.is_injection:
+        logger.warning(
+            "servei.proposta: senyals d'injecció DINS de <DATA> (neutralitzats) matches=%s",
+            ",".join(v_dada.matches),
+        )
+
     messages = _munta_messages(cos)
     client = get_llm_client()
-    text = client.complete(messages, catala=cos.catala, temperatura=cos.temperatura)
+    # K7.4 · Sanititza la sortida del model (NFC, treu zero-width/control, trunca)
+    # abans de retornar-la o d'extreure'n JSON.
+    text = sanitize_result(
+        client.complete(messages, catala=cos.catala, temperatura=cos.temperatura)
+    )
     model = settings.llm_model_catala if cos.catala else settings.llm_model
     logger.info(
         "servei.proposta agent=%s json=%s criteris=%d evidencia=%s",

@@ -235,7 +235,7 @@ decisió segueix al kernel. És defensa en profunditat (elimina una via de tampe
   codi no fiable (xat/model/HTTP) per obtenir-ne referència; l'allowlist signada s'imposa al
   registre. Hardening possible (frozen mapping), no bypass.
 
-### OBERT (declarat; requereix un increment dedicat)
+### OBERT (declarat; requereix un increment dedicat) → **TANCAT a INCR.7 (2026-06-05)**
 - **[CRITIC · INV-1 camí viu] Guardrails anti-injection = codi mort**: `app/guardrails.py`
   (detect_injection, K5.4 system-prompt no eliminable, wrap_untrusted, sanitize_result) està
   definit i unit-testejat al KERNEL però NO s'invoca al punt real de delegació a l'LLM
@@ -244,3 +244,42 @@ decisió segueix al kernel. És defensa en profunditat (elimina una via de tampe
   eval/exec (cap RCE), però la injecció indirecta cap a l'LLM NO està mitigada al camí viu.
   Pendent: cablejar els guardrails a `routes_servei.py` (anteposar SECURITY_SYSTEM_PROMPT,
   `wrap_untrusted` a l'evidència, `detect_injection` fail-closed, `sanitize_result` a la sortida).
+  → **Resolt a la secció INCR.7-CORE, sota.**
+
+---
+
+## 2026-06-05 · INCR.7-CORE — cablejar els guardrails al camí viu (tanca l'OBERT INV-1)
+
+Increment dedicat que tanca la troballa CRÍTICA del red-team TOTAL: els guardrails ja
+NO són codi mort al punt de delegació real a l'LLM.
+
+### Implementació
+- **NOU** `backend/app/core/guardrails.py`: MIRALL del mòdul canònic `kernel/app/guardrails.py`
+  (el backend i el kernel són paquets `app` independents → no es pot importar entre ells; la
+  còpia es documenta com a «mantenir sincronitzada»). Aporta `SECURITY_SYSTEM_PROMPT`/
+  `ensure_security_prompt` (K5.4), `wrap_untrusted` (K7.2), `sanitize_result` (K7.4),
+  `detect_injection` (K7.1) amb els MATEIXOS patrons que el kernel.
+- `backend/app/api/routes_servei.py` (`/api/servei/proposta`, l'únic punt viu de delegació):
+  - **K5.4**: s'anteposa `SECURITY_SYSTEM_PROMPT` SEMPRE el primer del system. El `cos.sistema`
+    del cridador només s'ANNEXA → no eliminable.
+  - **K7.2**: criteris i evidència (DADA no fiable) s'embolcallen amb `wrap_untrusted` (<DATA>
+    + anti-breakout del delimitador).
+  - **K7.1 (defensa en profunditat)**: el CANAL D'INSTRUCCIÓ (`instruccions` + `sistema` del
+    cridador) es passa per `detect_injection` amb **llindar=2 → rebuig 422 fail-closed** + log
+    (un sol senyal no rebutja, per evitar FP en avaluació: «valora si l'alumne *ignora* les
+    *instruccions*» = 1 senyal → passa). El CANAL DE DADA (criteris+evidència) NO rebutja
+    (l'evidència d'un alumne pot contenir paraules «d'atac» legítimament); ja l'inertitza
+    el wrapping i el system de seguretat — només es registra.
+  - **K7.4**: la sortida del model passa per `sanitize_result` abans de retornar-la / extreure JSON.
+
+### Bateria (compose suiterag image, Python 3.11)
+- **NOU** `backend/tests/test_servei_guardrails.py` (8 tests): system no eliminable, evidència
+  en <DATA>, anti-breakout `</DATA>`, rebuig 422 de jailbreak clar a instrucció, NO-FP d'una
+  sola paraula sensible, injecció dins evidència no rebutja però embolcalla, sortida sanititzada
+  (zero-width/control). Backend complet: **111 passed, 2 xfailed** (sense regressions).
+
+### Impacte en invariants
+- **INV-1**: el camí viu ja aplica defensa en profunditat contra injecció indirecta cap a
+  l'LLM (estructural via <DATA> + system no eliminable, i fail-closed al canal d'instrucció).
+  El kernel seguia sense fer eval/exec; ara el forat d'integració queda tancat per als vectors
+  demostrats. Resta diferit (STOP): NER per a noms en text lliure.

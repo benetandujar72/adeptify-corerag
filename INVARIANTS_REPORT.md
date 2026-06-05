@@ -118,11 +118,14 @@ los 3 **bloqueados**.
 ## Red-team TOTAL (2026-06-05) — impacto en invariantes
 - **INV-2** reforzada: `PolicyEngine` guarda las reglas en **tuplas inmutables** (antes listas
   mutables → tampering in-process). Test `test_policy.py::test_redteam_politica_immutable_*`.
-- **INV-1 (kernel)**: SIGUE ✅ — el kernel no hace eval/exec de ningún input. PERO el red-team
+- **INV-1 (kernel)**: SIGUE ✅ — el kernel no hace eval/exec de ningún input. El red-team
   marcó AT-RISK el **camino vivo de inferencia** (`adeptify-corerag/backend/app/api/routes_servei.py`),
-  donde los guardrails anti-injection (`app/guardrails.py`) NO se invocan: la inyección indirecta
-  hacia el LLM no está mitigada en ese endpoint. Es **deuda de integración** (no una RCE del
-  kernel) → requiere un incremento dedicado para cablear los guardrails al camino vivo.
+  donde los guardrails anti-injection NO se invocaban → **CERRADO en INCR.7 (2026-06-05)**:
+  `routes_servei.py` ahora antepone `SECURITY_SYSTEM_PROMPT` (no eliminable, K5.4), envuelve la
+  evidencia/criterios con `wrap_untrusted` (<DATA>, K7.2), pasa el canal de instrucción por
+  `detect_injection` con rechazo 422 fail-closed (umbral 2, K7.1) y sanea la salida del modelo
+  (`sanitize_result`, K7.4). Evidencia: `backend/tests/test_servei_guardrails.py` (8 tests);
+  backend **111 passed, 2 xfailed**. Diferido (STOP): NER para nombres en texto libre.
 - Las invariantes restantes (INV-3/INV-4/INV-5) → HOLDS (ver `SECURITY_LOG.md`).
 
 ## Notas / pendientes declarados
