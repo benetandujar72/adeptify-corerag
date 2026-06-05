@@ -155,6 +155,35 @@ Rama `feat/f4-kernel`. Impacto en invariantes (red-team de F4: 10 hallazgos, 7 c
 - **Aceptado/diferido**: RBAC se aplica en `invoke` (no en `propose`); cobertura semántica del canal
   inter-agente → modelo ML (STOP). Batería kernel non-DB: **167 passed**. Sin push (STOP-2).
 
+## F5 — capa conversacional (intent K13·F5a, memoria K14, bucle K16, triggers K15)
+Rama `feat/f4-kernel` (continúa F4). F5 NO añade superficie de ejecución: encadena piezas ya
+probadas. Impacto en invariantes (red-team de F5: 3 huecos cerrados + vectores verificados):
+- **INV-1 (cero código arbitrario)**: HOLDS. La intención NL→`playbook_id` es **determinista, sin
+  LLM y sin `eval`**; el texto solo se tokeniza y compara (nunca se ejecuta ni se convierte en args).
+  Los triggers usan operadores de un **conjunto cerrado** (`>=,<=,==,!=,>,<`), nunca `eval`. El
+  `confirma()` del bucle delega en el MISMO `Orchestrator.run` (no hay vía nueva); re-materializa el
+  Plan de forma determinista (no confía en un Plan guardado). Tests: `test_intent.py`,
+  `test_conversa.py::test_proposa_no_executa`, `test_triggers.py`.
+- **INV-4 (nada se crea sin definición firmada)**: REFORZADA. El resolutor de intención solo puede
+  devolver un `playbook_id` **⊆ catálogo firmado** (ENUM cerrado, estructural); NO reusa el pipeline
+  generativo (`skill_builder`): no genera pasos. El vocabulario NL (`alias`) vive DENTRO del artefacto
+  firmado → la correspondencia NL→id es tan fiable como la firma. Test `test_intent.py::test_sortida_sempre_dins_del_catalog`.
+- **INV-2 (RBAC en el kernel)**: HOLDS. La confirmación pasa por `Orchestrator.run` → `ToolKernel.invoke`
+  (RBAC + ApprovalGate). El bucle no exime ninguna aprobación: si falta token, el orquestrador escala y
+  nada se ejecuta. **Anti confused-deputy**: cada tarea queda ligada a (session_id, tenant_id); solo el
+  propietario confirma/ejecuta/rechaza. Tests `test_task_memory.py`, `test_conversa.py::test_altra_sessio_no_confirma`.
+- **INV-3 (cero egress)**: HOLDS. Los triggers son **propose-only** y de evaluación PURA; el disparador
+  es EXTERNO (mismo patrón que el scheduler K11): **sin runner async, sin webhooks ni puertos nuevos**
+  (`RUNNER_ACTIU=False`, gates G-A/G-G). Test `test_triggers.py::test_runner_off`.
+- **G-I (frontera PII en el CORE)**: el texto NL con PII evidente se rechaza (sobre forma cruda **y**
+  NFKD → anti-ofuscación fullwidth); la memoria rechaza PII y params anidados; el snapshot de triggers
+  solo admite numérico/booleano (no compara datos libres). El texto NL en bruto **nunca** se almacena.
+- **STOP-5/STOP-2**: cero dependencias nuevas (solo stdlib); cambio aditivo retrocompatible en
+  `playbooks.py`. **Sin push (G-J)**. Batería kernel non-DB: **221 passed, 4 skipped**.
+- **Aceptado/diferido**: si la intención elige mal el playbook, la barrera es la **compuerta humana**
+  (la intención es advisòria, no autoritativa); cobertura semántica/multilingüe del matcher → heurística
+  (la garantía dura es ENUM cerrado + aprobación). La frontera PII semántica de menores sigue en el SUITE.
+
 ## Notas / pendientes declarados
 - **INV-3 a nivel de RED**: en F1 está garantizada la capa de aplicación (rechazo de endpoints no-LAN + `external_calls=0`) y el aislamiento loopback del compose. La **regla de red/firewall del host** (egress) es una acción de la lista STOP-4 → fase de red dedicada, con aprobación humana.
 - **mTLS Core↔Suite**: implementado en el SUITE (cliente + certs DEV + control fail-closed); la provisión de certs de PRODUCCIÓN y la activación en red es OPS (STOP-4).

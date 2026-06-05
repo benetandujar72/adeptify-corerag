@@ -351,3 +351,40 @@ manté via la lent confused-deputy + els tests INV-4 de `test_agents.py`/`test_a
 ### Bateria
 - Kernel non-DB ampli (19 fitxers, F4 + regressió F3 approval/tools/orchestrator): **167 passed**.
 - Cap dependència nova; gitleaks net per slice. Rama `feat/f4-kernel` (HEAD `bb61c04`). **Sense push (STOP-2).**
+
+---
+
+## 2026-06-05 · F5 — capa conversacional PROPOSE → CONFIRM (sense via d'execució nova)
+
+Rama `feat/f4-kernel` (continua F4). Disseny F4→F5 SERIAL: F5 NO afegeix cap superfície
+d'execució (INV-1) — només encadena peces ja provades (catàleg signat → `instantiate` →
+`ApprovalGate` → `Orchestrator.run`). **Cap dependència nova** (només stdlib: `unicodedata`,
+`operator`, `math`, `enum`, `hashlib`). La intenció NL només **TRIA** d'un ENUM tancat; QUÈ
+s'executa surt sempre de l'artefacte signat i de la compuerta humana, mai del text.
+
+### Implementació (sub-funcionalitats K)
+| K | Mòdul | Garantia |
+|---|---|---|
+| K13·F5a | `intent.py` | NL→`playbook_id` DETERMINISTA sobre ENUM TANCAT (sortida ⊆ catàleg signat, INV-4); SENSE LLM ni eval (INV-1); vocabulari (`alias`) DINS de l'artefacte signat (no manipulable); **fail-closed davant l'ambigüitat** (empat → cap tria, l'humà desambigua); frontera PII (G-I) sobre text cru **i** normalitzat |
+| K14·F5b | `task_memory.py` | Cicle de vida `proposada→confirmada→executada`/`rebutjada` amb **màquina d'estats estricta** (transició il·legal → `TascaError`); **propietari lligat** (sessió+tenant → anti confused-deputy); `tasca_id` determinista (idempotent); cap PII ni text NL al registre |
+| K16·F5d | `conversa.py` | Bucle `proposa()`/`confirma()`: propose NO executa res (només encua aprovacions); confirm delega al MATEIX `Orchestrator.run` (RBAC→gate→esquema→callable); re-materialitza el Pla determinista (no es fia d'un Plan desat); guard de propietari/estat ABANS d'executar |
+| K15·F5c | `triggers.py` | Triggers declaratius SIGNATS, **propose-only** (`RUNNER_ACTIU=False`, gate G-A/G-G); condició `camp OP valor` amb operadors d'un conjunt TANCAT (sense eval, INV-1); snapshot només numèric/booleà (no compara dades lliures → PII); avaluació PURA, disparador EXTERN (cap bucle async, cap port/webhook, INV-3) |
+
+### Red-team adversarial de F5 — 3 forats tancats + vectors verificats (`test_f5_redteam.py`)
+| Sev | Troballa | Correcció |
+|---|---|---|
+| high | PII OFUSCADA amb Unicode de doble amplada (`pare＠…`, dígits fullwidth) evadia `_RE_PII` sobre el text cru | comprovació també sobre la forma **NFKD-normalitzada** (intent F5a) |
+| medium | Param NIAT (dict/list) amagaria PII a l'inspector escalar de la memòria | rebuig fail-closed de valors niats a `MemoriaTasques` (mateixa defensa que K10) |
+| medium | `valor` no finit (`nan`) en trigger signat: `!=` dispararia SEMPRE, `==` MAI (IEEE-754) | rebuig de no-finits a la càrrega + snapshot no finit → `False` (fail-closed) |
+| info (verificat) | Token d'aprovació FALSIFICAT / re-confirmar tasca EXECUTADA / confirmar tasca d'una altra sessió | cap executa res: token invàlid → escala (segueix PROPOSADA); terminal/altra-sessió → `TascaError` |
+
+**Acceptat (no fix):** si la intenció TRIA un playbook erroni, la barrera segueix sent la compuerta
+humana (resum NL determinista K6.2) — l'humà rebutja abans d'aprovar; la intenció és advisòria.
+Cobertura semàntica/multilingüe del matcher d'intenció → heurística (igual que el detector
+d'injection): la garantia dura és l'ENUM tancat + l'aprovació, no el matching.
+
+### Bateria
+- Kernel non-DB ampli (24 fitxers): **221 passed, 4 skipped** (+54 F5: intent 13 · task_memory 16 ·
+  conversa 9 · triggers 8 · red-team 8). Cap regressió (F1–F4 intactes).
+- Cap dependència nova; canvi additiu a `playbooks.py` (`alias` opcional + `conte_pii_evident` públic),
+  retrocompatible. Rama `feat/f4-kernel`. **Sense push (STOP-2 / G-J).**
