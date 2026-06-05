@@ -19,6 +19,13 @@ class KernelSettings(BaseSettings):
     entorn: str = "dev"  # dev | prod
     versio: str = "0.1.0-kernel-f1"
 
+    # ── Confiança de signatures GPG (F4 · gate G-D) ──
+    # Fingerprint FIXAT de la clau que ha de signar TOTS els artefactes (allowlist,
+    # playbooks, schedule, agents). En PRODUCCIÓ el pinning és OBLIGATORI (fail-closed):
+    # sense aquest valor, la verificació GPG es rebutja. Així no n'hi ha prou amb una
+    # signatura vàlida de qualsevol clau importable.
+    trusted_gpg_fingerprint: str | None = None
+
     # ── Límits del bucle determinista (K1.2) ──
     max_steps_default: int = 10
     max_steps_hard: int = 25  # sostre absolut; cap sessió pot demanar-ne més

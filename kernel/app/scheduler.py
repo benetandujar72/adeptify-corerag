@@ -34,6 +34,35 @@ RUNNER_ACTIU = False
 _TIPUS_SPEC = {"interval", "diari", "setmanal"}
 
 
+def _valida_spec(tid: str, spec: dict) -> None:
+    """Valida els camps d'una spec a la CÀRREGA (fail-closed): cap artefacte signat
+    malformat passa, i is_due mai veu camps absents/fora de rang (red-team F4)."""
+    tipus = spec.get("tipus")
+    if tipus not in _TIPUS_SPEC:
+        raise SchedulerError(f"Tasca «{tid}»: schedule.tipus invàlid «{tipus}»")
+    if tipus == "interval":
+        try:
+            seg = float(spec["segons"])
+        except (KeyError, ValueError, TypeError) as exc:
+            raise SchedulerError(f"Tasca «{tid}»: interval.segons absent o invàlid") from exc
+        if seg <= 0:
+            raise SchedulerError(f"Tasca «{tid}»: interval.segons ha de ser > 0")
+        return
+    try:
+        h, m = int(spec["hora"]), int(spec["minut"])
+    except (KeyError, ValueError, TypeError) as exc:
+        raise SchedulerError(f"Tasca «{tid}»: hora/minut absents o invàlids") from exc
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        raise SchedulerError(f"Tasca «{tid}»: hora/minut fora de rang")
+    if tipus == "setmanal":
+        try:
+            d = int(spec["dia"])
+        except (KeyError, ValueError, TypeError) as exc:
+            raise SchedulerError(f"Tasca «{tid}»: dia absent o invàlid") from exc
+        if not (0 <= d <= 6):
+            raise SchedulerError(f"Tasca «{tid}»: dia fora de rang (0-6)")
+
+
 def _dt_utc(ts: float) -> dt.datetime:
     return dt.datetime.fromtimestamp(ts, tz=dt.timezone.utc)
 
@@ -126,8 +155,7 @@ def load_signed_schedule(*, data_path: str, sig_path: str, pubkey_path: str,
         if pid not in playbooks:
             raise SchedulerError(f"Tasca «{tid}»: playbook «{pid}» FORA del catàleg signat")
         spec = dict(entry.get("schedule", {}) or {})
-        if spec.get("tipus") not in _TIPUS_SPEC:
-            raise SchedulerError(f"Tasca «{tid}»: schedule.tipus invàlid «{spec.get('tipus')}»")
+        _valida_spec(tid, spec)  # fail-closed: tipus + camps presents i en rang
         tasques[tid] = ScheduledTask(id=tid, playbook_id=pid,
                                      params=dict(entry.get("params", {}) or {}), spec=spec)
     if not tasques:

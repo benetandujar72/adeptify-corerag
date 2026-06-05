@@ -169,6 +169,30 @@ def test_instantiate_tipus_incorrecte():
         instantiate(pb, {"n": "no-es-int"})
 
 
+def test_instantiate_arg_niat_rebutjat():
+    """Red-team F4: un arg NIAT (dict/list) evadia la guarda anti-PII → ara es rebutja."""
+    pb = _pb(passos=(PlaybookStep("echo.info", {"msg": "ok", "meta": {"dni": "12345678Z"}}),))
+    with pytest.raises(PlaybookError):
+        instantiate(pb, {"doc_id": "x"})
+
+
+def test_carrega_playbook_arg_niat_rebutjat(tmp_path, allowlist):
+    path = _yaml(tmp_path, """
+playbooks:
+  - id: niat
+    descripcio: x
+    risc_max: info
+    passos:
+      - tool_id: echo.info
+        args:
+          meta:
+            dni: "12345678Z"
+""")
+    with pytest.raises(PlaybookError):
+        load_signed_playbooks(data_path=path, sig_path="x", pubkey_path="x",
+                              allowlist=allowlist, verify=False)
+
+
 def test_instantiate_valor_param_no_es_re_templatitza():
     """INV-1: un valor de param que sembli un placeholder/codi NO es re-interpreta;
     arriba al Plan com a string literal, mai s'executa ni es torna a substituir."""

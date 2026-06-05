@@ -47,6 +47,32 @@ def _op_policy() -> PolicyEngine:
     return PolicyEngine([AllowRule("operator", RiskLevel.WRITE_LOCAL)])
 
 
+# ── Red-team F4: token single-use + grant idempotent/terminal ───────────────
+def test_token_single_use(approval_gate, make_session):
+    """Un token aprova UNA execució; reutilitzar-lo dins del TTL es rebutja (anti-replay)."""
+    sess = make_session()
+    req = approval_gate.propose(session=sess, tool_id="kv.put_local",
+                                risk=RiskLevel.WRITE_LOCAL, args={"key": "k", "value": "v"})
+    out = approval_gate.approve(request=req, approver_id="alice")
+    assert out.granted and out.token
+    kw = dict(request_id=req.request_id, tool_id="kv.put_local", session_id=sess.context.session_id)
+    approval_gate.verify_token(out.token, **kw)            # 1a vegada: OK
+    with pytest.raises(ApprovalError):
+        approval_gate.verify_token(out.token, **kw)        # 2a vegada: rebuig (single-use)
+
+
+def test_grant_idempotent_no_remint(approval_gate, make_session):
+    """Aprovar un request JA concedit no re-encunya cap token nou (terminal)."""
+    sess = make_session()
+    req = approval_gate.propose(session=sess, tool_id="kv.put_local",
+                                risk=RiskLevel.WRITE_LOCAL, args={"key": "k", "value": "v"})
+    out1 = approval_gate.approve(request=req, approver_id="alice")
+    assert out1.granted and out1.token
+    out2 = approval_gate.approve(request=req, approver_id="alice")
+    assert out2.granted and out2.token is None            # no re-mint
+    assert req.request_id not in approval_gate._pending    # PENDING purgat
+
+
 # ── Política d'aprovació per nivell (K6.1) ──
 def test_aprovacions_requerides_per_nivell():
     assert aprovacions_requerides(RiskLevel.INFO) == 0

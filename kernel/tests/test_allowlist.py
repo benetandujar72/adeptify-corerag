@@ -69,7 +69,34 @@ def test_pinning_fingerprint_incorrecte_rebutjat():
         )
 
 
+def test_pinning_obligatori_en_prod(monkeypatch):
+    """Red-team F4: en PRODUCCIÓ, sense fingerprint fixat, la verificació GPG es
+    rebutja (fail-closed G-D); no n'hi ha prou amb una signatura vàlida."""
+    from app.config import get_settings
+
+    fp = _fp_real()  # obté el fingerprint real ABANS d'activar prod (en dev no hi ha pinning)
+    monkeypatch.delenv("KERNEL_TRUSTED_GPG_FINGERPRINT", raising=False)
+    monkeypatch.setenv("ENTORN", "prod")
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(AllowlistError):
+            verify_gpg_signature(
+                data_path=f"{AL}/tools.yaml", sig_path=f"{AL}/tools.yaml.sig",
+                pubkey_path=f"{AL}/pubkey.asc",
+            )
+        # Amb el fingerprint correcte fixat, en prod, SÍ que verifica.
+        monkeypatch.setenv("KERNEL_TRUSTED_GPG_FINGERPRINT", fp)
+        get_settings.cache_clear()
+        assert verify_gpg_signature(
+            data_path=f"{AL}/tools.yaml", sig_path=f"{AL}/tools.yaml.sig",
+            pubkey_path=f"{AL}/pubkey.asc",
+        )
+    finally:
+        get_settings.cache_clear()
+
+
 def test_pinning_via_entorn(monkeypatch):
+    fp = _fp_real()  # fingerprint real amb l'entorn net (abans de fixar-ne cap)
     # Fingerprint de confiança erroni via entorn → load_signed_allowlist el rebutja.
     monkeypatch.setenv("KERNEL_TRUSTED_GPG_FINGERPRINT", "DEADBEEF" * 5)
     with pytest.raises(AllowlistError):
@@ -77,7 +104,7 @@ def test_pinning_via_entorn(monkeypatch):
             data_path=f"{AL}/tools.yaml", sig_path=f"{AL}/tools.yaml.sig", pubkey_path=f"{AL}/pubkey.asc",
         )
     # Amb el fingerprint correcte via entorn → carrega OK.
-    monkeypatch.setenv("KERNEL_TRUSTED_GPG_FINGERPRINT", _fp_real())
+    monkeypatch.setenv("KERNEL_TRUSTED_GPG_FINGERPRINT", fp)
     al = load_signed_allowlist(
         data_path=f"{AL}/tools.yaml", sig_path=f"{AL}/tools.yaml.sig", pubkey_path=f"{AL}/pubkey.asc",
     )

@@ -125,6 +125,10 @@ def _parse_param(entry: dict) -> PlaybookParam:
 def _valida_args_plantilla(pid: str, args: dict, noms_param: set[str]) -> None:
     """Cap concatenació amb placeholders; els placeholders exactes referencien params declarats."""
     for clau, valor in args.items():
+        if isinstance(valor, (dict, list, tuple)):
+            # Args NIATS no permesos: la guarda anti-PII i la validació de placeholders
+            # només inspeccionen escalars; un nivell d'indirecció els evadiria (red-team F4).
+            raise PlaybookError(f"Playbook «{pid}»: l'arg «{clau}» és niat (dict/list); no permès")
         if not isinstance(valor, str):
             continue
         m = _PLACEHOLDER_EXACTE.match(valor)
@@ -229,6 +233,8 @@ def instantiate(playbook: Playbook, params: dict | None = None) -> Plan:
     for pas in playbook.passos:
         args: dict = {}
         for clau, valor in pas.args.items():
+            if isinstance(valor, (dict, list, tuple)):
+                raise PlaybookError(f"Playbook «{playbook.id}»: arg «{clau}» niat no permès")
             if isinstance(valor, str):
                 m = _PLACEHOLDER_EXACTE.match(valor)
                 if m:

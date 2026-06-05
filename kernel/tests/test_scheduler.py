@@ -157,6 +157,34 @@ tasques:
     assert tasques_due(cat, now=ara, ultim_tret={"cada_minut": ara - 5}) == []
 
 
+# ── Red-team F4: validació de spec a la càrrega (fail-closed) ────────────────
+def test_schedule_spec_camps_invalids_rebutjat(tmp_path, playbooks):
+    # interval sense segons.
+    p1 = _schedule_yaml(tmp_path, """
+tasques:
+  - id: t
+    playbook: desa_nota
+    schedule:
+      tipus: interval
+""")
+    with pytest.raises(SchedulerError):
+        load_signed_schedule(data_path=p1, sig_path="x", pubkey_path="x",
+                             playbooks=playbooks, verify=False)
+    # diari amb hora fora de rang.
+    p2 = _schedule_yaml(tmp_path, """
+tasques:
+  - id: t
+    playbook: desa_nota
+    schedule:
+      tipus: diari
+      hora: "99"
+      minut: "0"
+""")
+    with pytest.raises(SchedulerError):
+        load_signed_schedule(data_path=p2, sig_path="x", pubkey_path="x",
+                             playbooks=playbooks, verify=False)
+
+
 # ── PROPOSE-ONLY: materialitza proposta SENSE executar ───────────────────────
 def test_materialitza_proposta_no_executa(tmp_path, playbooks, allowlist, approval_gate, make_session):
     cat = load_signed_schedule(data_path=_schedule_yaml(tmp_path, """

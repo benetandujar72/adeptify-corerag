@@ -176,6 +176,8 @@ def load_signed_collaboracions(*, data_path: str, sig_path: str, pubkey_path: st
         nodes: dict[str, CollabNode] = {}
         for nd in entry.get("nodes", []) or []:
             aid = str(nd["agent"])
+            if aid in nodes:  # el model identifica node==agent: cap agent dues vegades (fail-closed)
+                raise AgentDefError(f"Col·laboració «{cid}»: agent «{aid}» duplicat als nodes")
             agent = agents.require(aid)               # agent ∈ registre signat (INV-4)
             pid = str(nd["playbook"])
             if pid not in agent.allowed_playbooks:
@@ -183,6 +185,15 @@ def load_signed_collaboracions(*, data_path: str, sig_path: str, pubkey_path: st
                     f"Col·laboració «{cid}»: l'agent «{aid}» no té permès el playbook «{pid}»")
             if pid not in playbooks:
                 raise AgentDefError(f"Col·laboració «{cid}»: playbook «{pid}» FORA del catàleg signat")
+            # Least-privilege (INV-2): si l'agent declara allowed_tools, TOTES les eines
+            # del playbook han d'estar dins el seu scope (no pot executar eines fora d'ell).
+            pb = playbooks.require(pid)
+            if agent.allowed_tools:
+                for s in pb.passos:
+                    if s.tool_id not in agent.allowed_tools:
+                        raise AgentDefError(
+                            f"Col·laboració «{cid}»: el playbook «{pid}» usa l'eina «{s.tool_id}» "
+                            f"FORA de l'scope d'eines de l'agent «{aid}»")
             seg = tuple(_llista(nd.get("seguents")))
             nodes[aid] = CollabNode(agent_id=aid, playbook_id=pid, seguents=seg)
         if not nodes:

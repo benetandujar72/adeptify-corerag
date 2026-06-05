@@ -184,6 +184,8 @@ class ApprovalGate:
         self._pending: dict[str, _PendingState] = {}
         self._historial: dict[str, list[float]] = {}      # aprovador → timestamps (K6.4)
         self._cooldown_fins: dict[str, float] = {}        # aprovador → instant fi cooldown
+        self._concedits: dict[str, tuple[int, int]] = {}  # rid → (recollides, requerides) ja concedits
+        self._jti_consumits: set[str] = set()             # jtis de tokens JA usats (single-use)
 
     def _now(self, _now: float | None = None) -> float:
         if _now is not None:
@@ -247,6 +249,12 @@ class ApprovalGate:
         self, *, request: ApprovalRequest, approver_id: str, _now: float | None = None,
     ) -> ApprovalOutcome:
         now = self._now(_now)
+        # H (red-team F4): concessió TERMINAL i idempotent. Si el request ja s'ha
+        # concedit, no es reencunya cap token nou ni es consumeix quota anti-fatiga
+        # (evita re-mint il·limitat i acumulació de memòria del PENDING).
+        if request.request_id in self._concedits:
+            recollides, requerides = self._concedits[request.request_id]
+            return ApprovalOutcome(True, recollides, requerides, None)
         state = self._pending.get(request.request_id)
         if state is None:
             # Aprovar sense una proposta prèvia no és vàlid.
@@ -264,6 +272,8 @@ class ApprovalGate:
         )
         if recollides >= requerides:
             token = self._mint(state.request, now)
+            self._concedits[request.request_id] = (recollides, requerides)  # H: terminal
+            self._pending.pop(request.request_id, None)                     # H: purga PENDING
             return ApprovalOutcome(True, recollides, requerides, token)
         return ApprovalOutcome(False, recollides, requerides, None)
 
@@ -301,6 +311,12 @@ class ApprovalGate:
             raise ApprovalError("El token d'aprovació és per a una altra eina")
         if data.get("session_id") != session_id:
             raise ApprovalError("El token d'aprovació és per a una altra sessió")
+        # G (red-team F4): SINGLE-USE. Un token aprova UNA execució; reutilitzar-lo
+        # dins del TTL per re-executar la mateixa acció es rebutja (anti-replay).
+        jti = data.get("jti")
+        if not jti or jti in self._jti_consumits:
+            raise ApprovalError("Token d'aprovació ja consumit o sense jti (single-use)")
+        self._jti_consumits.add(jti)
         return data
 
     def _audit_event(self, *, actor: str, action: str, tenant_id: str, payload: dict) -> None:

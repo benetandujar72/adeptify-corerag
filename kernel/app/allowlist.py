@@ -25,11 +25,19 @@ def _norm_fp(fp: str | None) -> str:
 
 
 def fingerprint_de_confianca() -> str | None:
-    """Fingerprint GPG fixat (pinned) de confiança, des de l'entorn. Si està
-    definit, TOTA verificació de signatura l'ha de fer coincidir (F4.0a, gate G-D):
-    una signatura vàlida amb una clau diferent de la fixada es rebutja. Reutilitzable
-    pels registres signats de F4 (playbooks/agents/schedule)."""
-    return os.environ.get("KERNEL_TRUSTED_GPG_FINGERPRINT") or None
+    """Fingerprint GPG fixat (pinned) de confiança. Prové de la config del kernel
+    (`trusted_gpg_fingerprint`) o, com a alternativa, de l'entorn. Si està definit,
+    TOTA verificació de signatura l'ha de fer coincidir (gate G-D): una signatura
+    vàlida amb una clau diferent de la fixada es rebutja. El mateix fingerprint fixat
+    obliga que allowlist, playbooks, schedule i agents estiguin signats per la MATEIXA
+    clau (continuïtat de signant per desplegament, no per fitxer)."""
+    try:
+        from .config import get_settings
+
+        fp = get_settings().trusted_gpg_fingerprint
+    except Exception:  # noqa: BLE001 - config no disponible: cau a l'entorn
+        fp = None
+    return fp or os.environ.get("KERNEL_TRUSTED_GPG_FINGERPRINT") or None
 
 
 @dataclass(frozen=True)
@@ -69,6 +77,22 @@ def verify_gpg_signature(*, data_path: str, sig_path: str, pubkey_path: str,
     Si `expected_fingerprint` està fixat (gate G-D), NO n'hi ha prou amb una signatura
     vàlida: el fingerprint de la clau signant ha de coincidir EXACTAMENT amb el fixat.
     Així una signatura vàlida feta amb una clau importable però NO de confiança es rebutja."""
+    # Resol el fingerprint de confiança (explícit o de config/entorn). Pinning
+    # OBLIGATORI en producció (gate G-D, fail-closed): sense cap fingerprint fixat,
+    # una signatura vàlida de qualsevol clau importable NO és de confiança.
+    pin = expected_fingerprint or fingerprint_de_confianca()
+    if pin is None:
+        try:
+            from .config import get_settings
+
+            es_prod = get_settings().es_prod
+        except Exception:  # noqa: BLE001 - config no disponible: no forcem en no-prod
+            es_prod = False
+        if es_prod:
+            raise AllowlistError(
+                "Pinning de fingerprint GPG OBLIGATORI en producció (G-D): definiu "
+                "trusted_gpg_fingerprint / KERNEL_TRUSTED_GPG_FINGERPRINT"
+            )
     gpg = gnupg.GPG(gnupghome=gnupghome) if gnupghome else gnupg.GPG()
     pub = pathlib.Path(pubkey_path).read_text(encoding="utf-8")
     imported = gpg.import_keys(pub)
@@ -80,10 +104,10 @@ def verify_gpg_signature(*, data_path: str, sig_path: str, pubkey_path: str,
         estat = getattr(verified, "status", "desconegut")
         raise AllowlistError(f"Signatura GPG de l'allowlist INVÀLIDA (estat: {estat})")
     fp = verified.fingerprint
-    if expected_fingerprint and _norm_fp(fp) != _norm_fp(expected_fingerprint):
+    if pin and _norm_fp(fp) != _norm_fp(pin):
         raise AllowlistError(
             "Signatura GPG vàlida però fingerprint NO CONFIAT (pinning G-D): "
-            f"esperat …{_norm_fp(expected_fingerprint)[-8:]}, rebut …{_norm_fp(fp)[-8:]}"
+            f"esperat …{_norm_fp(pin)[-8:]}, rebut …{_norm_fp(fp)[-8:]}"
         )
     return fp
 
