@@ -1,78 +1,128 @@
-# adeptify-corerag
+# Adeptify Core RAG
 
-> **«IA que protegeix».** A sovereign Retrieval-Augmented / Cache-Augmented Generation (RAG/CAG) engine for schools and education centres — where the AI runs **inside** the institution and **no student data ever leaves it**.
+![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)
+![Local-first](https://img.shields.io/badge/local--first-zero%20egress-0f766e)
+![Status](https://img.shields.io/badge/status-active%20MVP-f59e0b)
 
-`adeptify-corerag` is the **open core** of the Adeptify platform. It is fully self-hostable, runs **100% local models** (Ollama / vLLM) and is built for **GDPR** and the **EU AI Act** by design. The commercial school-management modules live in a separate private repository (`adeptify-suiterag`) that talks to this core over a local API.
+**Sovereign RAG and AI governance layer for regulated organizations.**
 
-**License:** GNU AGPL-3.0-or-later (see `LICENSE`). The core is also available under a separate **commercial license** (dual licensing) — contact bandujar@xtec.cat.
+Adeptify Core is the public, auditable engine of the Adeptify platform. It is built for institutions that cannot treat AI as "just another connector": schools, public bodies, foundations, healthcare-adjacent teams and companies working with sensitive knowledge.
 
----
+The core idea: **make private AI provable**. Every answer should be traceable to sources, every access should be permissioned, every sensitive boundary should be explicit, and the deployment should be able to run locally or in a private cloud.
 
-## Why
+## Why This Exists
 
-| The typical EdTech SaaS | adeptify-corerag |
-|---|---|
-| Minors' data lives in the vendor's cloud | **Data stays in the centre** (self-hosted) |
-| Depends on third-party APIs (OpenAI…) | **Self-hosted models, zero egress** |
-| Black box | **Forensic audit** + transparency (AI Act Art. 50) |
-| Opaque automated decisions | **Human validation always** (AI Act Art. 14) |
+Generic AI assistants and connector ecosystems will keep improving. That makes basic RAG a commodity.
 
-## Core principles (non-negotiable)
+Adeptify Core focuses on the part large AI vendors do not solve for each institution by default:
 
-- **Zero egress** — inference and data are 100% local; no third-party commercial API on the critical path.
-- **Human oversight (Art. 14)** — the AI proposes drafts; a person validates and executes.
-- **Data sovereignty (GDPR)** — no real minors' PII in this repository or its history; validation uses **synthetic data** only.
-- **Traceability** — every answer cites its sources; every interaction is audited.
-- **No lock-in** — everything runs in containers; switching the LLM is one environment variable.
+| Commodity RAG | Adeptify Core |
+| --- | --- |
+| Chat over documents | Governed AI access over institutional knowledge |
+| Cloud-first connectors | Local-first or private-cloud deployment |
+| Trust by vendor promise | Trust by audit logs, policy, RBAC and source citations |
+| One user, one assistant | Multi-institution, role-scoped access |
+| Hard to inspect | Open repository, open API contracts and reproducible stack |
 
-## What's in the core
+## Core vs Suite
 
-RAG/CAG pipeline (ingestion, semantic chunking, embeddings, hybrid retrieval + reranking), an OpenAI-compatible serving layer, base agents, an MCP server, the chat dashboard, base RBAC and audit, and a privacy gateway. School-management features (enrolment, attendance, assessment, payments, records, integrations) are **not** here — they are commercial modules in `adeptify-suiterag`.
+```text
+adeptify-corerag  (PUBLIC · GNU AGPL-3.0)
+RAG/CAG · ingestion · retrieval · chat API · RBAC base · audit · MCP layer · privacy gateway
 
-## Quick start
+        authenticated local/service API boundary
+
+adeptify-suiterag (PRIVATE · proprietary)
+Institutional workflows · real PII · school/company modules · integrations · SLAs · compliance packs
+```
+
+The boundary is intentional:
+
+- **Core** contains the reusable trust engine and must be inspectable.
+- **Suite** contains client-specific workflows, sensitive operational data and commercial modules.
+- The Suite talks to the Core through an authenticated API. PII must be minimized or pseudonymized before crossing that boundary.
+
+## Available Today
+
+- Self-hosted RAG/CAG stack with document ingestion, semantic chunking, embeddings, hybrid retrieval and reranking.
+- OpenAI-compatible local inference path for Ollama/vLLM. Production deployments should keep commercial LLM calls off the critical path unless explicitly approved.
+- pgvector-backed retrieval and source-grounded answers.
+- Multi-institution access model with baseline RBAC.
+- Append-only audit log for chats, ingestion and administrative actions.
+- MCP-style internal tool layer and privacy gateway for controlled connector execution.
+- Privacy telemetry, DLP checks and production hardening checks.
+- Synthetic/sample data for demos without real minors' or client data.
+- Evaluation scripts for retrieval/routing quality.
+
+## What Makes It Defensible
+
+The moat is not "we have a chatbot." The moat is **operational trust**:
+
+- **Policy-as-code:** institutional rules should be versioned, reviewed and tested.
+- **Privacy firewall:** PII detection, pseudonymization and fail-closed boundaries before model or connector calls.
+- **Forensic audit:** who asked, with which role, over which sources, and what was returned.
+- **Local sovereignty:** local models first, private cloud when needed, no silent egress.
+- **Domain packs:** education, GDPR/EU, public administration and other regulated playbooks.
+- **Open-core credibility:** public engine for trust, private Suite for customer-specific workflows.
+
+## Roadmap For Contributors
+
+These are the highest-leverage areas if the goal is to make Adeptify Core a reference open-source project:
+
+1. `adeptify.policy.yml`: policy-as-code for allowed models, connectors, roles, retention, PII rules and audit requirements.
+2. `adeptify firewall`: CLI/API that scans prompts, retrieved chunks and connector payloads before anything leaves the trust boundary.
+3. `adeptify eval`: reproducible RAG evaluation with hallucination, citation, privacy and permission tests.
+4. Compliance packs: `education-es`, `gdpr-eu`, `ai-act-basic`, `public-admin`.
+5. Air-gapped profile: documented deployment with no external network dependency.
+6. Public synthetic demo: realistic enough to understand the product, clean enough to publish safely.
+7. Connector sandbox: allow-list, per-tool permissions, audit, rate limits and redaction.
+
+## Quick Start
 
 ```bash
-git clone <this-repo> adeptify-corerag && cd adeptify-corerag
-cp .env.example .env          # core-only keys; fill in locally, never commit
-# make sure Ollama is running and a local model is pulled (e.g. qwen2.5:7b)
-docker compose up -d          # db (pgvector) + backend + frontend
+git clone https://github.com/benetandujar72/adeptify-corerag.git
+cd adeptify-corerag
+cp .env.example .env
+
+# Make sure Ollama is running and a local model is available, for example:
+# ollama pull qwen2.5:7b
+
+docker compose up -d
 ```
 
-Then open the dashboard, upload a few documents and ask a question — the answer cites its sources, and `crides_externes` (external LLM calls) stays at **0**.
+Then open the frontend, ingest sample documents and ask a question. The answer should cite sources and the privacy telemetry should show no unauthorized external LLM calls.
 
-> Requirements and on-prem/cloud notes: see `docs/`. Hardening before production: change `JWT_SECRET` and seed passwords, enable MFA, restrict remote access, serve over HTTPS, run the production check.
+Before any production use:
 
-## Architecture (open-core boundary)
+- Change all default secrets.
+- Enable HTTPS and network restrictions.
+- Review RBAC and institution isolation.
+- Run the production/security checks.
+- Use only synthetic or approved data in demos.
 
+## Repository Map
+
+```text
+backend/       FastAPI backend, RAG, RBAC, audit, MCP layer and security controls
+frontend/      Core dashboard and chat UI
+kernel/        Public/core-safe kernel pieces
+sample_data/   Synthetic demo data
+scripts/       Operational and evaluation scripts
 ```
-Frontend ─▶ adeptify-corerag  (PUBLIC · AGPL)  ◀──API──▶  adeptify-suiterag (PRIVATE · commercial)
-            RAG/CAG · retrieval · chat · API · RBAC base       school management · integrations
-```
-
-The two engines are **separate processes/containers** that communicate over a **local, authenticated API**. This process boundary is also the licence boundary: the commercial modules are independent programs that consume the core, not derivative works of it.
 
 ## Contributing
 
-Contributions are welcome — see `CONTRIBUTING.md`. By contributing you agree your work is licensed under **AGPL-3.0-or-later**. A formal contribution agreement for the dual-licensing model is being finalised with legal counsel and will be published before external contributions are accepted.
+Contributions are welcome, especially around privacy engineering, policy-as-code, local model deployment, RAG evaluation, documentation and synthetic demos.
 
-## Security
+By contributing, you agree that your contribution is licensed under the same license as the project. See `CONTRIBUTING.md` and `SECURITY.md` before opening large PRs or reporting vulnerabilities.
 
-Please report vulnerabilities privately — see `SECURITY.md` (do not open public issues for security problems).
+## License
 
-## Compliance
+`adeptify-corerag` is licensed under **GNU AGPL-3.0**. See `LICENSE`.
 
-Designed for the EU AI Act (human oversight, transparency, auditability) and GDPR (data sovereignty, no real minors' data in the open repo). A model card, record of processing activities and DPIA accompany production deployments.
+Commercial licensing for organizations that need different terms can be discussed with Adeptify.
 
----
+## Short Version
 
-### Català (resum)
+Adeptify Core wants to be the **Keycloak-style trust layer for institutional AI**: open, inspectable, self-hostable and strict about privacy before any agent, RAG pipeline or connector touches sensitive knowledge.
 
-`adeptify-corerag` és el **nucli obert** d'Adeptify: un motor RAG/CAG **sobirà** per a centres educatius que s'executa **dins** del centre, amb **models 100% locals** i **zero egress**, sota **AGPL-3.0** (amb llicència comercial disponible per a dual licensing). Els mòduls de gestió escolar són privats (`adeptify-suiterag`) i parlen amb el nucli per una **API local**. Per contribuir, vegeu `CONTRIBUTING.md`.
-
-### Castellano (resumen)
-
-`adeptify-corerag` es el **núcleo abierto** de Adeptify: un motor RAG/CAG **soberano** para centros educativos que se ejecuta **dentro** del centro, con **modelos 100% locales** y **zero egress**, bajo **AGPL-3.0** (con licencia comercial disponible para dual licensing). Los módulos de gestión escolar son privados (`adeptify-suiterag`) y hablan con el núcleo por una **API local**. Para contribuir, véase `CONTRIBUTING.md`.
-
----
-
-*Adeptify · Benet Andújar · bandujar@xtec.cat — «IA que protegeix» · AGPL-3.0-or-later*
