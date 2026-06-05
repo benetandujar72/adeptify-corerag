@@ -135,6 +135,26 @@ los 3 **bloqueados**.
   heurístico (defensa en profundidad; las barreras ESTRUCTURALES system-no-eliminable + `<DATA>` se mantienen).
 - Las invariantes restantes (INV-3/INV-4/INV-5) → HOLDS (ver `SECURITY_LOG.md`).
 
+## F4 — orquestración acotada (playbooks K10, scheduler K11, multi-agent K13)
+Rama `feat/f4-kernel`. Impacto en invariantes (red-team de F4: 10 hallazgos, 7 cerrados):
+- **INV-4 (la más delicada)**: REFORZADA. Los agentes y los grafos de colaboración son
+  artefactos **declarativos firmados GPG**; `SignedAgentRegistry` es `frozen` y NO expone API de
+  creación/clonado en runtime; el coordinador rechaza grafos con ciclos o agentes fuera del
+  registro firmado, y cada nodo corre con `session_id` único (anti confused-deputy) y el role
+  propio del agente. El multi-agent NO es una vía de ejecución nueva: cada nodo pasa por
+  `Orchestrator.run` (RBAC→ApprovalGate). Pinning de fingerprint GPG **obligatorio en prod**
+  (fail-closed) → todos los artefactos (allowlist/playbooks/schedule/agents) deben estar firmados
+  por la **misma** clave. Tests INV-4 en `test_agents.py`.
+- **INV-1**: el scheduler es **PROPOSE-ONLY** (sin runner de fondo ni async): no introduce vía de
+  ejecución autónoma; `materialitza_proposta` encola propuestas vía ApprovalGate sin invocar nada.
+  `instantiate` de playbooks es puro (sin `eval`/`create_model` peligroso); substitución exacta
+  `{param:NOM}` (sin concatenación); args anidados rechazados.
+- **INV-2**: el token de aprobación ahora es **single-use** (anti-replay dentro del TTL); grant
+  terminal/idempotente; `allowed_tools` del agente se aplica (least-privilege por agente).
+- **STOP-5**: cero dependencias nuevas en todo F4 (el scheduler usa aritmética propia, no `croniter`).
+- **Aceptado/diferido**: RBAC se aplica en `invoke` (no en `propose`); cobertura semántica del canal
+  inter-agente → modelo ML (STOP). Batería kernel non-DB: **167 passed**. Sin push (STOP-2).
+
 ## Notas / pendientes declarados
 - **INV-3 a nivel de RED**: en F1 está garantizada la capa de aplicación (rechazo de endpoints no-LAN + `external_calls=0`) y el aislamiento loopback del compose. La **regla de red/firewall del host** (egress) es una acción de la lista STOP-4 → fase de red dedicada, con aprobación humana.
 - **mTLS Core↔Suite**: implementado en el SUITE (cliente + certs DEV + control fail-closed); la provisión de certs de PRODUCCIÓN y la activación en red es OPS (STOP-4).

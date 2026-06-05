@@ -315,3 +315,39 @@ de detecció ≥95%/≤5% FP intacte).
   profunditat heurística; les barreres ESTRUCTURALS (system no eliminable + <DATA> + reafirmació
   final) es mantenen. La cobertura semàntica completa requereix un classificador per model
   (diferit darrere STOP humà). NO és una RCE del kernel (INV-1 estructural intacte).
+
+---
+
+## 2026-06-05 · F4 — orquestració acotada (playbooks, scheduler, multi-agent)
+
+Rama `feat/f4-kernel` (sobre `feat/secure-kernel-f1`). Decisions de disseny (workflow de
+disseny F4∥F5 + revisió adversarial): **scheduler PROPOSE-ONLY sense runner ni dep**; **F4→F5
+serial** (F5 només disseny+stubs en paral·lel). **Cap dependència nova a tot F4.**
+
+### Implementació (sub-funcionalitats K)
+| K | Mòdul | Garantia | Commit |
+|---|---|---|---|
+| F4.0a | `allowlist.py` | Pinning de fingerprint GPG; OBLIGATORI en prod (fail-closed, gate G-D); helper reutilitzable | `b5f5f15` |
+| K10 | `playbooks.py` | Playbooks declaratius signats → `Plan`; `instantiate` pur (sense eval), substitució exacta `{param:NOM}`, anti-PII, tool∈allowlist, risc≤risc_max. Contracte F4↔F5 | `2414cd7` |
+| K11 | `scheduler.py` | PROPOSE-ONLY: `is_due` aritmètica pròpia UTC (sense croniter), `materialitza_proposta` encua via ApprovalGate **sense executar**; `RUNNER_ACTIU=False` | `b17c223` |
+| K13 | `agents.py` | Multi-agent per definició SIGNADA (INV-4): registre `frozen` sense API de creació runtime, graf signat sense cicles, sessions úniques per node, canal `<DATA>` | `1facc76` |
+
+### Red-team adversarial de F4 (5 lents × verificació) — 10 troballes, 7 TANCADES (`bb61c04`)
+| Sev | Troballa | Correcció |
+|---|---|---|
+| critic/high | Pinning GPG opt-in sense fail-closed + sense continuïtat cross-keyring | `verify_gpg_signature` resol el pin; en prod OBLIGATORI (mateixa clau per a tots els artefactes) |
+| high | Token d'aprovació re-usable dins del TTL (replay) | **single-use** (consum de jti) |
+| medium | Guarda anti-PII de K10 evadible amb args NIATS (dict/list) | rebuig fail-closed d'args niats |
+| medium | `allowed_tools` de l'agent mai aplicat | least-privilege: eines del playbook ∈ scope de l'agent |
+| medium | PENDING d'aprovació no purgat + re-mint | grant terminal/idempotent + purga |
+| low | spec del scheduler sense validar a la càrrega | validació fail-closed |
+| info | node duplicat a la col·laboració | rebuig a boot |
+
+**Acceptades (documentades, no fix):** el RBAC s'aplica a l'`invoke` (no a `propose`); `ultim_tret`
+és estat de l'almacén OPS de confiança; cobertura semàntica del canal inter-agent → model ML (STOP).
+NOTA: una lent del red-team (inv4-agents) no va emetre sortida estructurada; la cobertura INV-4 es
+manté via la lent confused-deputy + els tests INV-4 de `test_agents.py`/`test_approval.py`.
+
+### Bateria
+- Kernel non-DB ampli (19 fitxers, F4 + regressió F3 approval/tools/orchestrator): **167 passed**.
+- Cap dependència nova; gitleaks net per slice. Rama `feat/f4-kernel` (HEAD `bb61c04`). **Sense push (STOP-2).**
