@@ -98,3 +98,18 @@ class SchedulerError(KernelError):
 class AgentDefError(KernelError):
     """Definició d'agent fora del registre signat o graf de coordinació no conforme
     (F4 · K13 / INV-4): cap agent s'instancia/modifica en runtime sense definició signada."""
+
+
+class TascaError(KernelError):
+    """Tasca automatitzada amb transició d'estat il·legal, propietari no coincident
+    (confused-deputy) o PII evident (F5 · K14): la memòria de tasques és fail-closed."""
+
+
+class IntencioError(KernelError):
+    """Intenció conversacional que no resol a cap playbook del catàleg signat, o que
+    s'intenta executar sense passar per propose→confirm (F5 · K13·F5a / K16)."""
+
+
+class TriggerError(KernelError):
+    """Trigger declaratiu invàlid: signatura incorrecta, playbook inexistent, operador no
+    permès, o snapshot amb valors no numèrics (F5 · K15). L'avaluació és pura i propose-only."""

@@ -54,6 +54,14 @@ def _conte_pii_evident(valor: object) -> bool:
     return isinstance(valor, str) and bool(_RE_PII.search(valor))
 
 
+def conte_pii_evident(valor: object) -> bool:
+    """Guarda anti-PII pública (font única de veritat per a la frontera del CORE).
+
+    La reusa F5 (intent NL) per rebutjar text d'usuari amb PII evident abans que res
+    arribi al CORE: el detector és el MATEIX que el dels playbooks (G-I), no un de paral·lel."""
+    return _conte_pii_evident(valor)
+
+
 @dataclass(frozen=True)
 class PlaybookParam:
     nom: str
@@ -75,6 +83,10 @@ class Playbook:
     params: tuple[PlaybookParam, ...]
     passos: tuple[PlaybookStep, ...]
     risc_max: RiskLevel
+    # Vocabulari NL OPCIONAL per al resolutor d'intencions F5a. Viu DINS de l'artefacte
+    # signat → la correspondència NL→playbook_id és tan fiable com la signatura (no
+    # manipulable en runtime). Buit per defecte (retrocompatible amb F4).
+    alias: tuple[str, ...] = ()
 
     def param(self, nom: str) -> PlaybookParam | None:
         return next((p for p in self.params if p.nom == nom), None)
@@ -183,8 +195,10 @@ def load_signed_playbooks(*, data_path: str, sig_path: str, pubkey_path: str,
             raise PlaybookError(f"Playbook «{pid}» sense passos")
         if len(passos) > MAX_PASSOS_PLAYBOOK:
             raise PlaybookError(f"Playbook «{pid}»: {len(passos)} passos > màxim {MAX_PASSOS_PLAYBOOK}")
+        alias = tuple(str(a) for a in (entry.get("alias", []) or []))
         playbooks[pid] = Playbook(id=pid, descripcio=str(entry.get("descripcio", "")),
-                                  params=params, passos=tuple(passos), risc_max=risc_max)
+                                  params=params, passos=tuple(passos), risc_max=risc_max,
+                                  alias=alias)
     if not playbooks:
         raise PlaybookError("Catàleg de playbooks buit o sense secció 'playbooks'")
     return SignedPlaybookCatalog(playbooks, fingerprint=fingerprint)
