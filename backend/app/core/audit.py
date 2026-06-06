@@ -53,6 +53,7 @@ def registra_chat(
     fonts: list[dict[str, Any]] | None = None,
     message_id: str | None = None,
     intencio: str | None = None,
+    model_utilitzat: str | None = None,
 ) -> None:
     """Registra una interacció de xat al log d'auditoria (BD + fitxer).
 
@@ -68,6 +69,7 @@ def registra_chat(
         "fonts": fonts_resum,
         "intencio": intencio,
         "message_id": message_id,
+        "model_utilitzat": model_utilitzat,
     }
 
     db.execute(
@@ -93,6 +95,7 @@ def registra_chat(
             "conversation_id": conversation_id,
             "message_id": message_id,
             "intencio": intencio,
+            "model_utilitzat": model_utilitzat,
             "fonts": fonts_resum,
         }
     )

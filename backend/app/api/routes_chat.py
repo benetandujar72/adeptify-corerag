@@ -93,6 +93,7 @@ def chat(
             fonts=[f.model_dump() for f in fonts],
             message_id=msg.id,
             intencio=prep.intencio,
+            model_utilitzat=prep.model_utilitzat,
         )
         return ChatResponse(
             conversation_id=conv.id,
@@ -159,6 +160,7 @@ def chat(
             fonts=[f.model_dump() for f in fonts],
             message_id=msg.id,
             intencio=prep.intencio,
+            model_utilitzat=prep.model_utilitzat,
         )
         message_final = Missatge(
             id=msg.id,

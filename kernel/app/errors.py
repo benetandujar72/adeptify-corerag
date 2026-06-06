@@ -113,3 +113,8 @@ class IntencioError(KernelError):
 class TriggerError(KernelError):
     """Trigger declaratiu invàlid: signatura incorrecta, playbook inexistent, operador no
     permès, o snapshot amb valors no numèrics (F5 · K15). L'avaluació és pura i propose-only."""
+
+
+class SizingError(KernelError):
+    """Catàleg de dimensionament de models malformat (K5 · Sub-A/llmfit): `params_b` o
+    `quantitzacions` absents/invàlids. El motor de fit és pur i propose-only."""

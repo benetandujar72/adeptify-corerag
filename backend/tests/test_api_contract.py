@@ -85,7 +85,7 @@ def test_system_status_estructura_i_crides_externes_zero(client, auth):
     assert cos["privadesa"]["processament_local"] is True
 
 
-def test_chat_no_stream_format(client, auth, document_indexat):
+def test_chat_no_stream_format(client, auth, document_indexat, db):
     resp = client.post(
         "/api/chat",
         headers=auth,
@@ -101,6 +101,16 @@ def test_chat_no_stream_format(client, auth, document_indexat):
     assert msg["confianca"] is not None
     # La font ha de citar el document indexat.
     assert any(f["doc_id"] == "nofc_2024" for f in msg["fonts"])
+    from sqlalchemy import select
+
+    from app.core.config import get_settings
+    from app.db.models import AuditLog
+
+    log = db.scalar(select(AuditLog).where(AuditLog.conversation_id == cos["conversation_id"]))
+    assert log is not None
+    model = (log.detalls or {}).get("model_utilitzat")
+    settings = get_settings()
+    assert model in {settings.llm_model, settings.llm_model_catala, settings.llm_model_skills}
 
 
 def test_conversa_es_crea_i_es_recupera(client, auth, document_indexat):

@@ -22,7 +22,7 @@ from app.api.schemas import (
     StatusServidor,
     SystemStatusResponse,
 )
-from app.core import institucions, llicencia, telemetria
+from app.core import arsul, audit, hwfit, institucions, llicencia, retencio, telemetria
 from app.core.config import Settings, get_settings
 from app.core.roles import Rol
 from app.core.security import Usuari, get_current_user
@@ -184,3 +184,86 @@ def estat_produccio(
             detail="Només la direcció/PAS pot consultar l'estat de producció.",
         )
     return executa_check()
+
+
+@router.get("/system/hardware-fit")
+def system_hardware_fit(
+    usuari: Usuari = Depends(get_current_user),
+) -> dict:
+    """Dimensionament de models locals segons GPU/RAM/disc disponibles.
+
+    No descarrega models ni arrenca cap servei. Exposa inventari de maquina i
+    decisions de desplegament, per tant queda limitat a direccio/PAS/superadmin.
+    """
+    if usuari.rol not in {Rol.DIRECCIO, Rol.PAS, Rol.SUPERADMIN}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Només la direcció/PAS pot consultar el dimensionament de models.",
+        )
+    return hwfit.informe_hwfit()
+
+
+@router.get("/system/retencio")
+def system_retencio(
+    usuari: Usuari = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Informe dry-run de retenció RGPD.
+
+    No esborra cap dada. Serveix per revisar quantes converses/feedback/auditoria
+    quedarien afectades abans que Direccio/DPD aprovin una politica destructiva.
+    """
+    if usuari.rol not in {Rol.DIRECCIO, Rol.PAS, Rol.SUPERADMIN}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Només la direcció/PAS pot consultar l'informe de retenció.",
+        )
+    return retencio.build_report(db)
+
+
+@router.get("/system/arsul/export")
+def system_arsul_export(
+    usuari_objectiu: str,
+    institucio: str | None = None,
+    usuari: Usuari = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Exportacio assistida ARSUL d'un usuari del centre.
+
+    No esborra ni anonimitza dades. El paquet exclou secrets d'autenticacio
+    (password_hash, totp_secret) i queda limitat a la institucio autoritzada.
+    """
+    if usuari.rol not in {Rol.DIRECCIO, Rol.PAS, Rol.SUPERADMIN}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Només la direcció/PAS pot generar exports ARSUL.",
+        )
+    institucio_objectiu = institucio or usuari.institucio
+    if usuari.rol != Rol.SUPERADMIN and institucio_objectiu != usuari.institucio:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No pots exportar dades d'una altra institució.",
+        )
+    try:
+        paquet = arsul.build_export(
+            db, username=usuari_objectiu, institucio_id=institucio_objectiu
+        )
+    except LookupError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuari no trobat en aquesta institució.",
+        ) from None
+
+    audit.registra_accio(
+        db,
+        usuari=usuari.usuari,
+        rol=usuari.rol.value,
+        accio="arsul_export",
+        detalls={
+            "subject": usuari_objectiu,
+            "institucio": institucio_objectiu,
+            "summary": paquet["summary"],
+        },
+        base_legal="art. 15 i 20 RGPD (dret d'acces i portabilitat)",
+    )
+    return paquet

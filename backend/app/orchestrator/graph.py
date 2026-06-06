@@ -72,6 +72,7 @@ class ResultatOrquestracio:
     resposta_precomputada: str | None = None
     tools_usades: list[str] = field(default_factory=list)
     proposta: dict[str, Any] | None = None
+    model_utilitzat: str | None = None
 
     @property
     def fonts(self):
@@ -351,8 +352,9 @@ class Orchestrator:
         if agent.id == "assistent_admin":
             resposta_precomputada, tools_usades, proposta = self._resol_tools(
                 agent, estat.get("prompt_messages", []), rol, institucio,
-                usuari_nom, estat.get("catala", True),
+                usuari_nom, estat.get("catala", True) and not agent.bilingue,
             )
+        catala = estat.get("catala", True)
         return ResultatOrquestracio(
             agent_id=agent.id,
             agent=agent,
@@ -360,10 +362,11 @@ class Orchestrator:
             reencaminat=decisio.reencaminat,
             resultats=estat.get("resultats", []),
             prompt_messages=estat.get("prompt_messages", []),
-            catala=estat.get("catala", True),
+            catala=catala,
             resposta_precomputada=resposta_precomputada,
             tools_usades=tools_usades,
             proposta=proposta,
+            model_utilitzat=self._model_efectiu(agent, catala),
         )
 
     def _resol_tools(
@@ -429,19 +432,22 @@ class Orchestrator:
         except Exception:  # noqa: BLE001 - el tool-calling no ha de trencar el xat
             return None, [], None
 
-    def _model_resposta(self, agent: AgentDef) -> str | None:
-        """Model a usar per a la resposta: els skills (personalitzats) van al model de
-        més qualitat lingüística (LLM_MODEL_SKILLS); els integrats, al per defecte."""
-        return get_settings().llm_model_skills if agent.personalitzat else None
+    def _model_efectiu(self, agent: AgentDef, catala: bool) -> str:
+        """Nom del model que es fara servir per generar la resposta."""
+        settings = get_settings()
+        if agent.personalitzat:
+            return settings.llm_model_skills
+        if catala and not agent.bilingue:
+            return settings.llm_model_catala
+        return settings.llm_model
 
     def genera(self, prep: ResultatOrquestracio) -> str:
         """Genera la resposta completa (no streaming)."""
         if prep.resposta_precomputada is not None:
             return prep.resposta_precomputada  # ja resolta pel bucle de tools
         client = get_llm_client()
-        usa_catala = prep.catala and not prep.agent.bilingue
         return client.complete(
-            prep.prompt_messages, catala=usa_catala, model=self._model_resposta(prep.agent)
+            prep.prompt_messages, model=prep.model_utilitzat
         )
 
     def genera_stream(self, prep: ResultatOrquestracio) -> Iterator[str]:
@@ -452,9 +458,8 @@ class Orchestrator:
                 yield tros
             return
         client = get_llm_client()
-        usa_catala = prep.catala and not prep.agent.bilingue
         yield from client.stream(
-            prep.prompt_messages, catala=usa_catala, model=self._model_resposta(prep.agent)
+            prep.prompt_messages, model=prep.model_utilitzat
         )
 
     def prova(
@@ -476,7 +481,7 @@ class Orchestrator:
         prompt = _construeix_prompt(agent, message, resultats, [], "ca")
         # La prova és d'un skill → usa el model de qualitat lingüística.
         text = get_llm_client().complete(
-            prompt, catala=True, model=self._model_resposta(agent)
+            prompt, model=self._model_efectiu(agent, True)
         )
         return text, resultats
 

@@ -26,7 +26,7 @@ from sqlalchemy import select
 
 from app.core.config import Settings, get_settings
 from app.db.models import AuditLog, Institucio, User
-from app.db.session import get_sessionmaker
+from app.db import session as db_session
 
 Severitat = str  # "ok" | "info" | "avis" | "critic"
 _ORDRE = {"ok": 0, "info": 1, "avis": 2, "critic": 3}
@@ -187,7 +187,7 @@ def _control_credencials_demo() -> Control:
     """Detecta usuaris demo amb la contrasenya per defecte (PBKDF2; no podem
     saber la contrasenya en clar però sí si l'usuari encara existeix amb un
     nom típic de demo)."""
-    SessionLocal = get_sessionmaker()
+    SessionLocal = db_session.get_sessionmaker()
     usuaris_demo = {"admin", "marta", "familia_garcia", "pol", "direccio", "pas_admin"}
     with SessionLocal() as db:
         existents = set(db.scalars(select(User.username).where(User.username.in_(usuaris_demo))).all())
@@ -202,6 +202,34 @@ def _control_credencials_demo() -> Control:
         "credencials_demo", "Credencials demo", sev,
         f"Usuaris demo presents: {', '.join(sorted(existents))}.",
         "Canvia o esborra les contrasenyes per defecte abans d'operar amb usuaris reals.",
+    )
+
+
+def _control_mfa_gestors() -> Control:
+    """Detecta comptes de gestió sense MFA actiu."""
+    SessionLocal = db_session.get_sessionmaker()
+    rols_gestio = {"direccio", "pas", "superadmin"}
+    with SessionLocal() as db:
+        usuaris = list(
+            db.scalars(
+                select(User).where(User.actiu.is_(True), User.rol.in_(rols_gestio))
+            ).all()
+        )
+    if not usuaris:
+        return Control(
+            "mfa_gestors", "MFA rols gestió", "info",
+            "No hi ha comptes actius de direcció/PAS/superadmin.",
+        )
+    sense = [f"{u.username}@{u.institucio_id}" for u in usuaris if not u.totp_actiu]
+    if not sense:
+        return Control(
+            "mfa_gestors", "MFA rols gestió", "ok",
+            f"MFA actiu en {len(usuaris)} compte(s) de gestió.",
+        )
+    return Control(
+        "mfa_gestors", "MFA rols gestió", "avis",
+        f"{len(sense)}/{len(usuaris)} compte(s) de gestió sense MFA: {', '.join(sorted(sense))}.",
+        "Activa MFA a Configuració abans d'operar amb dades reals o accés remot.",
     )
 
 
@@ -280,7 +308,7 @@ def controls_arrencada(s: Settings) -> list[Control]:
 
 
 def _control_audit_log(s: Settings) -> Control:
-    SessionLocal = get_sessionmaker()
+    SessionLocal = db_session.get_sessionmaker()
     with SessionLocal() as db:
         n = db.scalar(select(AuditLog.id).limit(1))
     if n is None:
@@ -310,7 +338,7 @@ def _control_audit_log(s: Settings) -> Control:
 
 
 def _control_institucions() -> Control:
-    SessionLocal = get_sessionmaker()
+    SessionLocal = db_session.get_sessionmaker()
     with SessionLocal() as db:
         rows = list(db.scalars(select(Institucio)).all())
     actives = [i for i in rows if i.actiu]
@@ -383,6 +411,7 @@ def executa_check() -> dict[str, Any]:
         _control_acces_remot(s),
         _control_xarxa_local(s),
         _control_credencials_demo(),
+        _control_mfa_gestors(),
         _control_audit_log(s),
         _control_institucions(),
         _control_https(),
