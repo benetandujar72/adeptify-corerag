@@ -231,7 +231,15 @@ export function Sidebar() {
           </span>
         </div>
         <div className="text-xs text-muted">
-          {ss?.versio ?? 'v0.1.0-mvp'} · Adeptify
+          {ss?.versio ?? 'v0.1.0-mvp'} · Adeptify ·{' '}
+          <a
+            href="/THIRD_PARTY_NOTICES.txt"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-dark"
+          >
+            Llicències de tercers
+          </a>
         </div>
       </div>
     </aside>

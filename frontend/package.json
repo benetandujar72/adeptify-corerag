@@ -6,10 +6,12 @@
   "description": "Dashboard IA Nou Patufet — RAG self-hosted multi-agent per a l'Escola Nou Patufet",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/generate-third-party-notices.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview --port 5173 --host 0.0.0.0",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "licenses:notices": "node scripts/generate-third-party-notices.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",
