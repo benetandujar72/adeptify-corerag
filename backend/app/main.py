@@ -21,6 +21,7 @@ from app.api.routes_auth import router as auth_router
 from app.api.routes_chat import router as chat_router
 from app.api.routes_conversations import router as conversations_router
 from app.api.routes_documents import router as documents_router
+from app.api.routes_codi_font import router as codi_font_router
 from app.api.routes_feedback import router as feedback_router
 from app.api.routes_institucio_seguretat import router as institucio_seguretat_router
 from app.api.routes_institucio_users import router as institucio_users_router
@@ -232,6 +233,7 @@ def crea_app() -> FastAPI:
     app.include_router(institucio_users_router)
     app.include_router(institucio_seguretat_router)
     app.include_router(public_router)
+    app.include_router(codi_font_router)
     # Servei intern (suite → core): delegació d'inferència, autenticat amb
     # CORE_SERVICE_TOKEN. Desactivat si el secret no està configurat.
     app.include_router(servei_router)

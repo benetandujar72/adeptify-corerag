@@ -1,0 +1,52 @@
+name: ci
+
+# Proves del backend i build del frontend a cada push i PR. El build executa `prebuild`, que regenera
+# `public/THIRD_PARTY_NOTICES.txt` a partir de l'arbre real de dependències: si una dependència nova no
+# té llicència llegible, el build falla aquí i no en producció.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: backend (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Dependències (torch només CPU: les rodes CUDA no calen per a les proves)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+      - name: Proves
+        run: python -m pytest tests -q -p no:cacheprovider
+
+  frontend:
+    name: frontend (tsc + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build

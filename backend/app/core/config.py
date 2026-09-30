@@ -153,6 +153,11 @@ class Settings(BaseSettings):
     # secrets forts i inferència local abans d'arrencar.
     entorn: str = "dev"  # dev | pilot-gcp | prod-onprem
     versio: str = "v0.1.0-mvp"
+    # AGPL-3.0 §13: qui fa servir el nucli per la xarxa ha de poder obtenir-ne el codi font
+    # corresponent. `codi_font_url` és el repositori públic (canvia'l si en desplegues un fork
+    # modificat: l'obligació és oferir el TEU codi); `codi_font_commit`, el commit desplegat.
+    codi_font_url: str = "https://github.com/benetandujar72/adeptify-corerag"
+    codi_font_commit: str = ""
     server_host: str = "192.168.1.10 (o IP VM GCP)"
 
     # Carpeta muntada read-only amb els documents d'exemple del centre.

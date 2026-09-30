@@ -7,6 +7,9 @@ import { useAppStore } from '../../store/appStore'
 import { fetchConversation, deleteConversation } from '../../api/client'
 import type { Agent, MissatgeUI } from '../../types'
 
+// Repositori del codi que corre (AGPL §13). Un fork desplegat amb canvis ha d'apuntar al seu.
+const CODI_FONT_URL: string = import.meta.env.VITE_CODI_FONT_URL ?? 'https://github.com/benetandujar72/adeptify-corerag'
+
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const mins = Math.floor(diff / 60_000)
@@ -239,6 +242,16 @@ export function Sidebar() {
             className="underline hover:text-dark"
           >
             Llicències de tercers
+          </a>
+          {' · '}
+          {/* AGPL-3.0 §13: el codi font s'ofereix a qui fa servir el nucli per la xarxa (també a /api/codi-font). */}
+          <a
+            href={CODI_FONT_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-dark"
+          >
+            Codi font (AGPL)
           </a>
         </div>
       </div>
