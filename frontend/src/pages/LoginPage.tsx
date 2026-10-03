@@ -1,3 +1,4 @@
+import { notificaEntrada } from '../auth/cookieSession'
 // ─── Pàgina de login: selecció d'institució + usuari/contrasenya ─────────────
 // Pas 1: selecciona el centre (auto si n'hi ha un de sol; selector si n'hi ha més).
 //        Així queda EXPLÍCIT a quina institució et valides (multi-tenant).
@@ -68,12 +69,13 @@ export function LoginPage() {
         setLoading(false)
         return
       }
-      localStorage.setItem('patufet_token', resp.token)
-      localStorage.setItem('patufet_usuari', usuari.trim())
-      localStorage.setItem('patufet_rol', resp.rol)
+
+
+
+      notificaEntrada()
       dispatch({
         type: 'SET_SESSION',
-        payload: { token: resp.token, usuari: usuari.trim(), rol: resp.rol },
+        payload: { usuari: usuari.trim(), rol: resp.rol },
       })
     } catch (err) {
       setError((err as Error).message || 'Usuari o contrasenya incorrectes.')

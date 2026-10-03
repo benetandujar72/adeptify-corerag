@@ -3,6 +3,9 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import { I18nProvider } from './i18n'
 import './index.css'
+import { installCookieSessionTransport } from './auth/cookieSession'
+
+installCookieSessionTransport()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

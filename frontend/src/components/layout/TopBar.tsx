@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { HelpCircle, ChevronDown, LogOut } from 'lucide-react'
 import { useAppStore } from '../../store/appStore'
+import { logout } from '../../api/client'
+import { eliminaCredencialsLlegades } from '../../auth/cookieSession'
 import { logoInicials, resetBranding } from '../../lib/branding'
 import { useT } from '../../i18n'
 import type { Vista } from '../../types'
@@ -135,10 +137,13 @@ export function TopBar() {
     setOpenMenu(null) // tanca el desplegable després de navegar
   }
 
-  function handleLogout() {
-    localStorage.removeItem('patufet_token')
-    localStorage.removeItem('patufet_usuari')
-    localStorage.removeItem('patufet_rol')
+  async function handleLogout() {
+    try { localStorage.setItem('adeptify_logout_pending', '1') } catch { /* no storage */ }
+    try {
+      await logout()
+      try { localStorage.removeItem('adeptify_logout_pending') } catch { /* no storage */ }
+    } catch { /* keep intent */ }
+    eliminaCredencialsLlegades()
     dispatch({ type: 'SET_SESSION', payload: null })
     dispatch({ type: 'SET_INSTITUCIO', payload: null })
     dispatch({ type: 'SET_AGENTS', payload: [] })

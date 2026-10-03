@@ -131,7 +131,6 @@ export interface SystemStatus {
 }
 
 export interface AuthResponse {
-  token: string
   rol: Rol
   mfa_required?: boolean
 }
@@ -165,7 +164,6 @@ export interface MissatgeUI extends Missatge {
 export interface UserSession {
   usuari: string
   rol: Rol
-  token: string
 }
 
 // ─── Navegació (vistes del menú superior) ────────────────────────────────────

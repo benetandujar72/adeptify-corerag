@@ -14,20 +14,37 @@ import { applyBranding } from '../lib/branding'
 import { useT, type Idioma } from '../i18n'
 import { IDIOMES_ADMESOS } from '../i18n/catalogs'
 import { useAppStore } from '../store/appStore'
-import type { Rol } from '../types'
+import { teSortidaPendent } from '../auth/cookieSession'
+import { ambTerminiSortida } from '../auth/terminiSortida'
 
 export function useInitApp() {
   const { state, dispatch } = useAppStore()
   const { setIdioma } = useT()
 
-  // Restaura sessió des de localStorage
+  // La identitat es restaura des del servidor, mai des d’un JWT de JS.
   useEffect(() => {
-    const token = localStorage.getItem('patufet_token')
-    const usuari = localStorage.getItem('patufet_usuari')
-    const rol = localStorage.getItem('patufet_rol') as Rol | null
+    if (teSortidaPendent()) {
+      void ambTerminiSortida(signal => fetch(`${import.meta.env.VITE_API_BASE_URL ?? '/api'}/auth/logout`, { method: 'POST', signal }))
+        .then(r => { if (r.ok) localStorage.removeItem('adeptify_logout_pending') }).catch(() => {})
+      return
+    }
+    let viu = true
+    void fetchMe().then(me => {
+      if (viu) dispatch({ type: 'SET_SESSION', payload: { usuari: me.usuari, rol: me.rol } })
+    }).catch(() => { /* sense sessió: pantalla d’entrada */ })
+    return () => { viu = false }
+  }, [dispatch])
 
-    if (token && usuari && rol) {
-      dispatch({ type: 'SET_SESSION', payload: { token, usuari, rol } })
+  useEffect(() => {
+    const reset = () => dispatch({ type: 'SET_SESSION', payload: null })
+    const changed = (event: StorageEvent) => {
+      if (event.key === 'adeptify_session_changed' || event.key === 'adeptify_logout_pending') reset()
+    }
+    window.addEventListener('adeptify-session-expired', reset)
+    window.addEventListener('storage', changed)
+    return () => {
+      window.removeEventListener('adeptify-session-expired', reset)
+      window.removeEventListener('storage', changed)
     }
   }, [dispatch])
 
@@ -35,6 +52,7 @@ export function useInitApp() {
   useEffect(() => {
     if (!state.session) return
 
+    let viu = true
     const loadAll = async () => {
       dispatch({ type: 'SET_LOADING', payload: true })
       try {
@@ -46,6 +64,7 @@ export function useInitApp() {
           fetchMe(),
           fetchLlicencia(),
         ])
+        if (!viu) return
 
         // Features llicenciades (per ocultar mòduls no inclosos al pla del centre).
         if (llicencia.status === 'fulfilled') {
@@ -86,11 +105,12 @@ export function useInitApp() {
       } catch {
         // errors individuals ja capturats per allSettled
       } finally {
-        dispatch({ type: 'SET_LOADING', payload: false })
+        if (viu) dispatch({ type: 'SET_LOADING', payload: false })
       }
     }
 
     void loadAll()
+    return () => { viu = false }
   }, [state.session, dispatch, setIdioma])
 
   // Refresca status del sistema cada 60 s

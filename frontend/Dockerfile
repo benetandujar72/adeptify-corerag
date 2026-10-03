@@ -12,31 +12,18 @@ RUN npm install --no-audit --no-fund
 # Copia la resta de fitxers
 COPY . .
 
-# Build (la variable s'injecta en build-time si es passa com ARG)
-ARG VITE_API_BASE_URL=http://localhost:8000/api
+# Mateix origen per defecte: nginx reenvia /api al backend intern.
+ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 RUN npm run build
 
-# ── Etapa 2: serve estàtic (sense toolchain de dev) ─────────────────────────────
-# Servim el build estàtic amb `serve` (un sol paquet), NO amb `vite preview`, de
-# manera que la imatge de runtime no arrossega les devDependencies. Usuari no-root.
-FROM node:20-alpine AS runtime
-
-WORKDIR /app
-
-RUN npm install -g serve@14.2.3
-
-# Només el build; cap codi font ni node_modules de dev.
-COPY --from=builder /app/dist ./dist
-
-# node:alpine ja inclou l'usuari no-root `node` (uid 1000).
-USER node
+# ── Etapa 2: SPA i proxy /api, sense Node ni toolchain de dev; usuari no-root. ──
+FROM nginxinc/nginx-unprivileged:alpine AS runtime
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/dist /usr/share/nginx/html
 
 EXPOSE 5173
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -qO- http://localhost:5173/ >/dev/null 2>&1 || exit 1
-
-# -s = SPA (fallback a index.html); -l = port.
-CMD ["serve", "-s", "dist", "-l", "5173"]
+    CMD wget -qO- http://127.0.0.1:5173/ >/dev/null 2>&1 || exit 1

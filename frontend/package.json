@@ -6,9 +6,10 @@
   "description": "Dashboard IA Nou Patufet — RAG self-hosted multi-agent per a l'Escola Nou Patufet",
   "scripts": {
     "dev": "vite",
-    "prebuild": "node scripts/generate-third-party-notices.mjs",
+    "prebuild": "node scripts/check-browser-sessions.mjs && node scripts/generate-third-party-notices.mjs",
+    "security:sessions": "node scripts/check-browser-sessions.mjs",
     "build": "tsc && vite build",
-    "preview": "vite preview --port 5173 --host 0.0.0.0",
+    "preview": "vite preview --port 5173",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "type-check": "tsc --noEmit",
     "licenses:notices": "node scripts/generate-third-party-notices.mjs"
@@ -18,8 +19,7 @@
     "date-fns": "^4.1.0",
     "lucide-react": "^0.454.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.27.0"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
@@ -35,6 +35,6 @@
     "tailwindcss": "^3.4.15",
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.60.0",
-    "vite": "^5.4.10"
+    "vite": "^6.4.3"
   }
 }

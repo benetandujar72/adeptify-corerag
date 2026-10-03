@@ -1,6 +1,6 @@
 // ─── Client API centralitzat (API_CONTRACT.md) ───────────────────────────────
 // Llegeix la base URL de VITE_API_BASE_URL (variable d'entorn Vite).
-// Tota petició autenticada inclou el token de localStorage.
+// Les peticions usen la sessió HttpOnly del mateix origen.
 
 import type {
   Agent,
@@ -61,18 +61,13 @@ import type {
   SystemStatus,
   User,
 } from '../types'
+import { ambTerminiSortida } from '../auth/terminiSortida'
 
 const BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
-function getToken(): string | null {
-  return localStorage.getItem('patufet_token')
-}
-
 function authHeaders(): HeadersInit {
-  const token = getToken()
-  return token
-    ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
-    : { 'Content-Type': 'application/json' }
+
+  return { 'Content-Type': 'application/json' }
 }
 
 async function handleResponse<T>(res: Response): Promise<T> {
@@ -90,6 +85,11 @@ async function handleResponse<T>(res: Response): Promise<T> {
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
+
+export async function logout(): Promise<void> {
+  const response = await ambTerminiSortida(signal => fetch(`${BASE_URL}/auth/logout`, { method: 'POST', signal }))
+  await handleResponse(response)
+}
 
 export async function login(
   usuari: string,
@@ -517,9 +517,9 @@ export async function fetchDocuments(): Promise<DocumentEstat[]> {
 /** Obre el fitxer ORIGINAL d'una font citada (F1). Es baixa amb el token a la
  *  capçalera (mai a la URL) i s'obre en una pestanya nova com a blob. */
 export async function obreFontDocument(doc_id: string): Promise<void> {
-  const token = getToken()
+
   const headers: Record<string, string> = {}
-  if (token) headers['Authorization'] = `Bearer ${token}`
+
   const res = await fetch(`${BASE_URL}/documents/${encodeURIComponent(doc_id)}/descarrega`, {
     headers,
   })
@@ -542,9 +542,9 @@ export async function obreFontDocument(doc_id: string): Promise<void> {
 /** Descarrega el butlletí com a PDF (blob amb el token al header; mai a la URL).
  *  Força la baixada amb una àncora `download` (millor que obrir pestanya per a un fitxer). */
 export async function descarregaButlletiPdf(butlleti_id: string, filename = 'butlleti.pdf'): Promise<void> {
-  const token = getToken()
+
   const headers: Record<string, string> = {}
-  if (token) headers['Authorization'] = `Bearer ${token}`
+
   const res = await fetch(`${BASE_URL}/avaluacio/butlletins/${encodeURIComponent(butlleti_id)}/pdf`, { headers })
   if (!res.ok) {
     let msg = `No s'ha pogut descarregar el PDF (HTTP ${res.status})`
@@ -575,9 +575,9 @@ export interface IngestResult {
 /** Puja un fitxer i l'ingereix (multipart). No s'hi posa Content-Type: el
  *  navegador hi afegeix el boundary automàticament. */
 export async function uploadDocument(file: File): Promise<IngestResult> {
-  const token = getToken()
+
   const headers: Record<string, string> = {}
-  if (token) headers['Authorization'] = `Bearer ${token}`
+
 
   const fd = new FormData()
   fd.append('fitxer', file)
@@ -629,9 +629,9 @@ export async function postFeedback(
 // ─── Veu: transcripció (STT local) ───────────────────────────────────────────
 
 export async function transcribeAudio(blob: Blob): Promise<string> {
-  const token = getToken()
+
   const headers: Record<string, string> = {}
-  if (token) headers['Authorization'] = `Bearer ${token}`
+
   const fd = new FormData()
   fd.append('fitxer', blob, 'dictat.webm')
   const res = await fetch(`${BASE_URL}/transcribe`, { method: 'POST', headers, body: fd })
@@ -788,9 +788,9 @@ export async function ingestLmsMaterial(input: {
 }
 
 export async function analyzeMoodleBackup(file: File): Promise<MoodleBackupBlueprint> {
-  const token = getToken()
+
   const headers: Record<string, string> = {}
-  if (token) headers.Authorization = `Bearer ${token}`
+
   const fd = new FormData()
   fd.append('fitxer', file)
   const res = await fetch(`${BASE_URL}/moodle/backup/analyze`, {
@@ -806,9 +806,9 @@ export async function suggestMoodleCoursePlan(file: File, brief: string): Promis
   blueprint: MoodleBackupBlueprint
   plan: Record<string, unknown>
 }> {
-  const token = getToken()
+
   const headers: Record<string, string> = {}
-  if (token) headers.Authorization = `Bearer ${token}`
+
   const fd = new FormData()
   fd.append('fitxer', file)
   fd.append('brief', brief)
@@ -821,9 +821,9 @@ export async function suggestMoodleCoursePlan(file: File, brief: string): Promis
 }
 
 export async function buildMoodleBackup(file: File, plan: Record<string, unknown>): Promise<void> {
-  const token = getToken()
+
   const headers: Record<string, string> = {}
-  if (token) headers.Authorization = `Bearer ${token}`
+
   const fd = new FormData()
   fd.append('fitxer', file)
   fd.append('plan_json', JSON.stringify(plan))
@@ -863,9 +863,9 @@ export async function ingestMoodleBackupToRag(file: File): Promise<{
   chunks: number
   blueprint: MoodleBackupBlueprint
 }> {
-  const token = getToken()
+
   const headers: Record<string, string> = {}
-  if (token) headers.Authorization = `Bearer ${token}`
+
   const fd = new FormData()
   fd.append('fitxer', file)
   const res = await fetch(`${BASE_URL}/moodle/backup/ingest`, {
@@ -1426,12 +1426,12 @@ export async function streamChat(
   conversation_id: string | null,
   callbacks: ChatSSECallbacks,
 ): Promise<void> {
-  const token = getToken()
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Accept: 'text/event-stream',
   }
-  if (token) headers['Authorization'] = `Bearer ${token}`
+
 
   let response: Response
   try {
@@ -1892,9 +1892,9 @@ export async function createCopilotContingut(input: {
 export type CopilotExportFormat = 'pdf' | 'docx' | 'md' | 'txt'
 
 export async function exportCopilotContingut(id: string, format: CopilotExportFormat): Promise<void> {
-  const token = getToken()
+
   const headers: Record<string, string> = {}
-  if (token) headers.Authorization = `Bearer ${token}`
+
   const res = await fetch(
     `${BASE_URL}/copilot/continguts/${encodeURIComponent(id)}/export?format=${format}`,
     { headers },

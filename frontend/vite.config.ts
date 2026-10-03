@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    host: true,
+    host: '127.0.0.1',
     proxy: {
       '/api': {
         target: process.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://localhost:8000',
@@ -15,6 +15,6 @@ export default defineConfig({
   },
   preview: {
     port: 5173,
-    host: true,
+    host: '127.0.0.1',
   },
 })

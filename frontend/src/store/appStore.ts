@@ -90,7 +90,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'SET_VISTA':
       return { ...state, vista: action.payload }
     case 'SET_SESSION':
-      return { ...state, session: action.payload }
+      return action.payload === null ? { ...initialState } : { ...state, session: action.payload }
     case 'SET_INSTITUCIO':
       return { ...state, institucio: action.payload }
     case 'SET_AGENTS':
