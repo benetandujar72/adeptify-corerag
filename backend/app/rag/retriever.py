@@ -55,7 +55,8 @@ def _cerca_vectorial(
     namespaces (aïllament canal públic vs. canal intern).
     """
     stmt = select(Chunk, Document).join(Document, Chunk.document_id == Document.id)
-    stmt = stmt.where(Chunk.embedding.is_not(None))
+    stmt = stmt.where(Chunk.embedding.is_not(None),
+                      Document.sensibilitat.in_(("public", "docent", "intern")))
     if institucio_id is not None:
         stmt = stmt.where(Document.institucio_id == institucio_id)
     if not incloure_admin:
@@ -97,7 +98,9 @@ def _cerca_lexica(
     if institucio_id is not None:
         filtre_inst = " AND d.institucio_id = :inst"
         params["inst"] = institucio_id
-    filtre_vis = "" if incloure_admin else " AND d.visibilitat <> 'admin'"
+    filtre_vis = " AND d.sensibilitat IN ('public', 'docent', 'intern')"
+    if not incloure_admin:
+        filtre_vis += " AND d.visibilitat <> 'admin'"
     # Coneixement propi de l'skill: limita als doc_ids indicats (parametritzat).
     filtre_con = ""
     if coneixement_doc_ids is not None:
@@ -209,6 +212,17 @@ def retrieve(
     no es recupera res (l'skill té coneixement però cap document encara hi encaixa).
     `namespaces`: aïllament per canal (p. ex. {'publico'} per al canal públic web).
     """
+    # Un context sense centre no autoritza una cerca global, ni tan sols interna.
+    if not institucio_id:
+        return []
+    # L'ACL s'aplica abans del top-k i de carregar contingut, no només després.
+    if doc_ids_permesos is not None:
+        coneixement_doc_ids = (
+            set(doc_ids_permesos) if coneixement_doc_ids is None
+            else set(coneixement_doc_ids) & doc_ids_permesos
+        )
+        if not coneixement_doc_ids:
+            return []
     settings = get_settings()
     top_k = top_k or settings.rag_top_k
     top_n = top_n or settings.rag_top_n

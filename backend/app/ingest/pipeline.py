@@ -23,6 +23,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core import documents_crypto
 from app.db.models import Chunk as ChunkRow
 from app.db.models import Document, DocumentOriginal
 from app.ingest import loaders
@@ -43,32 +44,40 @@ _MIME_PER_TIPUS = {
 
 
 def _desa_original(
-    db: Session, doc_id: str, institucio_id: str, cami: Path, tipus: str
+    db: Session, doc_id: str, institucio_id: str, cami: Path, tipus: str, *, sensible: bool = False
 ) -> None:
-    """Desa (o actualitza) el fitxer original per a poder-lo descarregar després.
+    """Conserva l'original actual o elimina la còpia anterior si no és conservable.
 
-    Best-effort: si falla la lectura o supera la mida màxima, no bloqueja la ingesta.
+    Els permisos i la classificació de la versió nova mai poden donar accés
+    a bytes antics. Un error de BD es propaga i la ingesta es desfà.
     """
+    existent = db.get(DocumentOriginal, doc_id)
+    if existent is not None and existent.institucio_id != institucio_id:
+        raise ValueError("L'original pertany a una altra institució.")
     try:
-        dades = cami.read_bytes()
-        if not dades or len(dades) > _MAX_ORIGINAL_BYTES:
-            return
-        mime = _MIME_PER_TIPUS.get(tipus) or mimetypes.guess_type(cami.name)[0] \
-            or "application/octet-stream"
-        existent = db.get(DocumentOriginal, doc_id)
+        with cami.open("rb") as stream:
+            dades = stream.read(_MAX_ORIGINAL_BYTES + 1)
+    except OSError:
+        dades = b""
+    if not dades or len(dades) > _MAX_ORIGINAL_BYTES:
         if existent is not None:
-            existent.institucio_id = institucio_id
-            existent.filename = cami.name
-            existent.mime = mime
-            existent.mida = len(dades)
-            existent.contingut = dades
-        else:
-            db.add(DocumentOriginal(
-                doc_id=doc_id, institucio_id=institucio_id, filename=cami.name,
-                mime=mime, mida=len(dades), contingut=dades,
-            ))
-    except Exception:  # noqa: BLE001 - desar l'original no ha de trencar la ingesta
-        pass
+            db.delete(existent)
+        return
+    mime = (_MIME_PER_TIPUS.get(tipus) or mimetypes.guess_type(cami.name)[0]
+            or "application/octet-stream")
+    protegit, storage_format = documents_crypto.protect(
+        dades, institucio_id, doc_id, required=sensible or get_settings().es_prod)
+    if existent is not None:
+        existent.filename = cami.name
+        existent.mime = mime
+        existent.mida = len(dades)
+        existent.contingut = protegit
+        existent.contingut_format = storage_format
+    else:
+        db.add(DocumentOriginal(
+            doc_id=doc_id, institucio_id=institucio_id, filename=cami.name,
+            mime=mime, mida=len(dades), contingut=protegit, contingut_format=storage_format,
+        ))
 
 
 # ───────────────────────── Registre de jobs ─────────────────────────────────
@@ -118,6 +127,12 @@ def _slug(filename: str) -> str:
     return base or uuid.uuid4().hex
 
 
+def _doc_id(institucio_id: str, filename: str) -> str:
+    """Identificador nou per tenant; els documents antics conserven la seva clau."""
+    prefix = re.sub(r"[^a-z0-9]+", "_", institucio_id.lower()).strip("_")
+    return f"{prefix}__{_slug(filename)}"
+
+
 def ingesta_fitxer(
     db: Session,
     cami: Path,
@@ -132,9 +147,8 @@ def ingesta_fitxer(
 ) -> tuple[int, int]:
     """Ingereix un únic fitxer. Retorna (documents_nous, chunks_creats).
 
-    Si el document ja existeix (mateix doc_id), es reindexa: s'esborren els
-    chunks antics i es torna a indexar amb la versió indicada. El document
-    s'assigna a la institució `institucio_id` (tenant). `visibilitat` controla
+    Si el document ja existeix al MATEIX tenant, es reindexa. Els fitxers
+    homònims de centres diferents no es poden substituir. `visibilitat` controla
     qui el pot recuperar al RAG ("tots" o "admin").
     """
     tipus = loaders.tipus_de(cami)
@@ -147,9 +161,8 @@ def ingesta_fitxer(
         return (0, 0)
 
     classificacio = None
-    # DLP + classificació RAG/CAG: NO bloqueja la indexació (best-effort), però
-    # etiqueta el document i bloqueja `exportable_ia` si hi ha dades personals,
-    # menors, avaluacions o informació educativa sensible.
+    # La classificació és obligatòria abans de persistir o indexar contingut.
+    # Un paràmetre de la font (p. ex. Moodle) mai rebaixa una detecció sensible.
     try:
         from app.security import content_safety, dlp
 
@@ -166,9 +179,12 @@ def ingesta_fitxer(
                 "DLP ingesta: fitxer=%s institucio=%s severitat=%s tipus=%s",
                 cami.name, institucio_id, severitat, dict(per_tipus),
             )
-    except Exception:  # noqa: BLE001 - el DLP no ha de trencar mai la ingesta
-        pass
-    sensibilitat_final = sensibilitat or (classificacio.sensibilitat if classificacio else "docent")
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError("No s'ha pogut verificar la sensibilitat del document.") from exc
+    sensibilitat_final = (
+        "sensible" if classificacio.sensibilitat == "sensible"
+        else sensibilitat or classificacio.sensibilitat
+    )
     exportable_final = (
         bool(exportable_ia)
         if exportable_ia is not None
@@ -184,13 +200,22 @@ def ingesta_fitxer(
             "deteccions": classificacio.deteccions,
         })
 
-    embedder = get_embedder()
-    vectors = embedder.embed([c.contingut for c in chunks])
+    # Dades sensibles: mai fragments ni embeddings en un índex de coneixement compartit.
+    if sensibilitat_final == "sensible":
+        chunks = []
+        visibilitat = "admin"
+        exportable_final = False
+    vectors = get_embedder().embed([c.contingut for c in chunks]) if chunks else []
 
-    doc_id = _slug(cami.name)
+    doc_id = _doc_id(institucio_id, cami.name)
     verificat_el = dt.date.today().isoformat()
 
-    existent = db.scalar(select(Document).where(Document.doc_id == doc_id))
+    existent = db.scalar(select(Document).where(
+        Document.doc_id == doc_id, Document.institucio_id == institucio_id))
+    if existent is None:
+        # Compatibilitat de cites antigues, sempre confinada al centre original.
+        existent = db.scalar(select(Document).where(
+            Document.doc_id == _slug(cami.name), Document.institucio_id == institucio_id))
     if existent is not None:
         db.execute(delete(ChunkRow).where(ChunkRow.document_id == existent.id))
         document = existent
@@ -200,7 +225,6 @@ def ingesta_fitxer(
         document.verificat_el = verificat_el
         document.n_chunks = len(chunks)
         document.estat = "indexat"
-        document.institucio_id = institucio_id
         document.visibilitat = visibilitat
         document.origen = origen
         document.canal_rag = canal_rag
@@ -240,14 +264,22 @@ def ingesta_fitxer(
             )
         )
     # Desa l'original per a poder obrir/descarregar la font citada (F1, docs/20).
-    _desa_original(db, doc_id, institucio_id, cami, tipus)
-    db.commit()
+    try:
+        _desa_original(db, document.doc_id, institucio_id, cami, tipus,
+                       sensible=document.sensibilitat == "sensible")
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return (document_nou, len(chunks))
 
 
-def elimina_document(db: Session, doc_id: str) -> bool:
+def elimina_document(db: Session, doc_id: str, institucio_id: str | None = None) -> bool:
     """Esborra un document i tots els seus chunks. Retorna True si existia."""
-    doc = db.scalar(select(Document).where(Document.doc_id == doc_id))
+    stmt = select(Document).where(Document.doc_id == doc_id)
+    if institucio_id is not None:
+        stmt = stmt.where(Document.institucio_id == institucio_id)
+    doc = db.scalar(stmt)
     if doc is None:
         return False
     db.execute(delete(ChunkRow).where(ChunkRow.document_id == doc.id))

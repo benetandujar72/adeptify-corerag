@@ -145,7 +145,13 @@ def test_documents_llista(client, auth, document_indexat):
     assert {"doc_id", "filename", "tipus", "fragments", "estat"} <= set(d.keys())
 
 
-def test_feedback(client, auth):
+def test_feedback(client, auth, db):
+    from app.db.models import Conversation, Message
+    conv = Conversation(agent_id="secretaria", usuari="marta", rol="docent")
+    db.add(conv)
+    db.flush()
+    db.add(Message(id="msg_x", conversation_id=conv.id, rol="assistant", contingut="Resposta sintètica."))
+    db.commit()
     resp = client.post(
         "/api/feedback",
         headers=auth,

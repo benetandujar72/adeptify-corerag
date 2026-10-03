@@ -27,7 +27,7 @@ def test_client_llm_bloqueja_domini_prohibit(monkeypatch):
 
 
 def test_mcp_llista_i_invoca_tools(db, document_indexat):
-    servidor = get_mcp_server(db)
+    servidor = get_mcp_server(db, institucio_id="nou_patufet")
     noms = servidor.noms()
     assert {"drive", "materials", "base_nofc_pec", "calendari"} <= set(noms)
 

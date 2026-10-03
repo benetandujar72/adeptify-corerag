@@ -44,10 +44,14 @@ def _cerca_documents(
     institució (aïllament multi-tenant; defensa en profunditat per a quan
     aquestes tools s'invoquin amb context d'usuari).
     """
+    if not institucio_id:
+        return MCPToolResult(ok=False, contingut=None, error="Cal el context de la institució.")
     stmt = (
         select(Chunk, Document)
         .join(Document, Chunk.document_id == Document.id)
         .where(Chunk.contingut.ilike(f"%{consulta}%"))
+        .where(Document.sensibilitat.in_(("public", "docent", "intern")),
+               Document.visibilitat == "tots")
     )
     if institucio_id is not None:
         stmt = stmt.where(Document.institucio_id == institucio_id)

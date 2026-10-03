@@ -149,6 +149,7 @@ class IngestRequest(BaseModel):
 class IngestResponse(BaseModel):
     job_id: str
     estat: str
+    avis: str | None = None
 
 
 class IngestStatusResponse(BaseModel):

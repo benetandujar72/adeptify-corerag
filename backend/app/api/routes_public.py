@@ -22,6 +22,7 @@ from __future__ import annotations
 import hmac
 import logging
 import re
+import unicodedata
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -99,8 +100,16 @@ PATRONS_INJECCIO = (
 
 
 def _es_intent_injeccio(pregunta: str) -> bool:
-    p = pregunta.lower()
-    return any(pat in p for pat in PATRONS_INJECCIO)
+    # NFKC, controls invisibles i separadors entre lletres: defensa addicional
+    # davant variants simples; els permisos de dades segueixen sent obligatoris.
+    p = unicodedata.normalize("NFKC", pregunta).casefold()
+    p = "".join(c for c in p if unicodedata.category(c) != "Cf")
+    compacte = "".join(c for c in p if c.isalnum())
+    return any(
+        pat.casefold() in p
+        or "".join(c for c in pat.casefold() if c.isalnum()) in compacte
+        for pat in PATRONS_INJECCIO
+    )
 
 
 def _sanititza_ref(text: str) -> str:

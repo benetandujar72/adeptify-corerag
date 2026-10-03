@@ -221,7 +221,7 @@ class Orchestrator:
         resultats = retrieve(
             self._db,
             estat["message"],
-            doc_ids_permesos=rbac.doc_ids_permesos(rol),
+            doc_ids_permesos=rbac.doc_ids_permesos(rol, self._db, estat.get("institucio")),
             institucio_id=estat.get("institucio"),
             incloure_admin=incloure_admin,
             coneixement_doc_ids=coneixement,
@@ -468,7 +468,7 @@ class Orchestrator:
         resultats = retrieve(
             self._db,
             message,
-            doc_ids_permesos=rbac.doc_ids_permesos(rol),
+            doc_ids_permesos=rbac.doc_ids_permesos(rol, self._db, institucio),
             institucio_id=institucio,
             incloure_admin=incloure_admin,
             coneixement_doc_ids=coneixement,

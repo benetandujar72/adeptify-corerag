@@ -31,11 +31,11 @@ from app.api.schemas import (
     IngestResponse,
     IngestStatusResponse,
 )
-from app.core import audit
+from app.core import audit, documents_crypto
 from app.core.config import get_settings
 from app.core.roles import Rol
 from app.core.security import Usuari, get_current_user
-from app.db.models import Document, DocumentOriginal
+from app.db.models import Document, DocumentOriginal, Institucio
 from app.db.session import get_db, get_sessionmaker
 from app.ingest import loaders, pipeline
 
@@ -43,6 +43,7 @@ router = APIRouter(prefix="/api", tags=["documents"])
 
 # Rols que poden veure documentació de gestió (visibilitat "admin").
 _ROLS_ADMIN_DOC = {Rol.DIRECCIO, Rol.PAS, Rol.SUPERADMIN}
+_ROLS_DOC_PUBLIC = {Rol.FAMILIA, Rol.ALUMNE}
 
 # Rols autoritzats a INGERIR documents (afegeixen coneixement a la institució).
 _ROLS_INGESTA = {Rol.DIRECCIO, Rol.PAS, Rol.SUPERADMIN, Rol.DOCENT}
@@ -51,16 +52,30 @@ _ROLS_INGESTA = {Rol.DIRECCIO, Rol.PAS, Rol.SUPERADMIN, Rol.DOCENT}
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
 
 
+def _comprova_context_lectura(usuari: Usuari, db: Session) -> None:
+    """Sense centre no hi ha lectura; famílies/alumnat exigeixen centre actiu."""
+    if not usuari.institucio or not usuari.institucio.strip():
+        raise HTTPException(status_code=403, detail="El centre no està disponible.")
+    if usuari.rol in _ROLS_DOC_PUBLIC:
+        active = db.scalar(select(Institucio.id).where(
+            Institucio.slug == usuari.institucio, Institucio.actiu.is_(True)))
+        if active is None:
+            raise HTTPException(status_code=403, detail="El centre no està disponible.")
+
+
 @router.get("/documents", response_model=DocumentsResponse)
 def llista_documents(
     usuari: Usuari = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DocumentsResponse:
-    docs = db.scalars(
-        select(Document)
-        .where(Document.institucio_id == usuari.institucio)
-        .order_by(Document.filename)
-    ).all()
+    _comprova_context_lectura(usuari, db)
+    stmt = select(Document).where(Document.institucio_id == usuari.institucio)
+    if usuari.rol in _ROLS_DOC_PUBLIC:
+        # "tots" no amplia l'accés familiar a contingut docent/intern.
+        stmt = stmt.where(Document.visibilitat == "tots", Document.sensibilitat == "public")
+    elif usuari.rol not in _ROLS_ADMIN_DOC:
+        stmt = stmt.where(Document.visibilitat != "admin", Document.sensibilitat != "sensible")
+    docs = db.scalars(stmt.order_by(Document.filename)).all()
     return DocumentsResponse(
         documents=[
             DocumentEstat(
@@ -93,6 +108,7 @@ def descarrega_document(
     la visibilitat "admin" (només direcció/PAS/superadmin). Tot auditat. Si no se'n va
     desar l'original (ingerit abans de F1 o massa gran) → 404.
     """
+    _comprova_context_lectura(usuari, db)
     doc = db.scalar(
         select(Document).where(
             Document.doc_id == doc_id, Document.institucio_id == usuari.institucio
@@ -100,7 +116,11 @@ def descarrega_document(
     )
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document no trobat.")
-    if doc.visibilitat == "admin" and usuari.rol not in _ROLS_ADMIN_DOC:
+    if usuari.rol in _ROLS_DOC_PUBLIC and (
+        doc.visibilitat != "tots" or doc.sensibilitat != "public"
+    ):
+        raise HTTPException(status_code=403, detail="Aquest document no és públic.")
+    if (doc.visibilitat == "admin" or doc.sensibilitat == "sensible") and usuari.rol not in _ROLS_ADMIN_DOC:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Aquest document és de gestió interna (només direcció/PAS).",
@@ -111,15 +131,25 @@ def descarrega_document(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="L'original no està disponible per a aquest document.",
         )
+    try:
+        content = documents_crypto.reveal(orig, usuari.institucio, doc_id,
+                                          sensitive=doc.sensibilitat == "sensible")
+    except documents_crypto.OriginalNoDisponible as exc:
+        raise HTTPException(status_code=503, detail="L'original protegit no està disponible.") from exc
     audit.registra_accio(
         db, usuari=usuari.usuari, rol=usuari.rol.value, accio="document_download",
         detalls={"doc_id": doc_id, "institucio": usuari.institucio},
     )
-    nom = (orig.filename or doc_id).replace('"', "").replace("\n", " ")
+    # Un original HTML mai s'executa a l'origen autenticat de l'aplicació.
+    nom = (orig.filename or doc_id).replace('"', "").replace("\r", "").replace("\n", " ")
+    nom = nom.encode("ascii", "ignore").decode("ascii") or "document"
     return Response(
-        content=orig.contingut,
+        content=content,
         media_type=orig.mime or "application/octet-stream",
-        headers={"Content-Disposition": f'inline; filename="{nom}"'},
+        headers={"Content-Disposition": f'attachment; filename="{nom}"',
+                 "Content-Security-Policy": "default-src 'none'; sandbox",
+                 "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store",
+                 "Referrer-Policy": "no-referrer"},
     )
 
 
@@ -181,20 +211,29 @@ async def ingest(
             )
         with tempfile.TemporaryDirectory() as carpeta_tmp:
             desti = Path(carpeta_tmp) / nom_original
-            dades = await fitxer.read()
+            dades = await fitxer.read(MAX_UPLOAD_BYTES + 1)
             if len(dades) > MAX_UPLOAD_BYTES:
                 raise HTTPException(
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                     detail="El fitxer supera la mida màxima permesa (100 MB).",
                 )
             desti.write_bytes(dades)
-            docs, chunks = pipeline.ingesta_fitxer(
-                db, desti, institucio_id=usuari.institucio
-            )
+            try:
+                docs, chunks = pipeline.ingesta_fitxer(
+                    db, desti, institucio_id=usuari.institucio
+                )
+            except documents_crypto.OriginalNoDisponible as exc:
+                job.estat = "error"
+                raise HTTPException(status_code=503,
+                                    detail="No es pot protegir l'original del document.") from exc
         job.estat = "fet"
         job.documents = docs
         job.chunks = chunks
-        return IngestResponse(job_id=job.job_id, estat=job.estat)
+        sensible = db.scalar(select(Document.doc_id).where(
+            Document.institucio_id == usuari.institucio,
+            Document.filename == nom_original, Document.sensibilitat == "sensible"))
+        return IngestResponse(job_id=job.job_id, estat=job.estat,
+                              avis="document_sensible" if sensible is not None else None)
 
     # Ingesta de carpeta en segon pla. La ruta es CONTÉ sempre dins de
     # SAMPLE_DATA_PATH: evita travessa de directoris / lectura arbitrària del
@@ -221,6 +260,9 @@ def esborra_document(
     db: Session = Depends(get_db),
 ) -> dict:
     """Esborra un document indexat (i els seus chunks) de la biblioteca."""
+    if usuari.rol not in _ROLS_INGESTA:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="El teu rol no pot esborrar documents.")
     # Aïllament multi-tenant: només es pot esborrar un document de la PRÒPIA
     # institució. Si és d'un altre centre (o no existeix) → 404 (no revela existència).
     doc = db.scalar(
@@ -232,7 +274,10 @@ def esborra_document(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Document no trobat."
         )
-    existia = pipeline.elimina_document(db, doc_id)
+    if (doc.visibilitat == "admin" or doc.sensibilitat == "sensible") and usuari.rol not in _ROLS_ADMIN_DOC:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Només la gestió pot esborrar aquest document.")
+    existia = pipeline.elimina_document(db, doc_id, institucio_id=usuari.institucio)
     audit.registra_accio(
         db,
         usuari=usuari.usuari,

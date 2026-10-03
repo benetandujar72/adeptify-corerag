@@ -21,6 +21,8 @@ _PATRONS_MENORS = re.compile(
     r"nee|nese|neae|dua individual|pla individualitzat|pi\b|"
     r"tdah|tea|disl[eè]xia|diagn[oò]stic|psicopedag[oò]gic|"
     r"salut|m[eè]dic|conducta|absentisme|expedient|"
+    r"asma|diabetis|epil[eè]psia|al[·.]?l[eè]rgia|alergia|medicaci[oó]|"
+    r"cel[ií]ac|cel[ií]aca|celiaquia|anafilaxi|discapacitat|malaltia|"
     r"nota|notes|qualificaci[oó]|avaluaci[oó] individual|"
     r"entrega|lliurament|feedback individual|butllet[ií]"
     r")\b",

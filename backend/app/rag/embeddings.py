@@ -46,6 +46,7 @@ class BGEEmbedder:
                 self._settings.embedding_model,
                 use_fp16=device != "cpu",
                 devices=device,
+                trust_remote_code=False,
             )
         return self._model
 

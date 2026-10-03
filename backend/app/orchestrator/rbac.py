@@ -1,10 +1,4 @@
-"""RBAC: comprovacions d'accés a agents (i, en el futur, a documents per rol).
-
-Al MVP tots els documents indexats són del centre i accessibles per als rols
-interns; el filtratge fi per document es deixa preparat (`doc_ids_permesos`)
-però retorna None (sense restricció) per defecte. L'accés als AGENTS sí que es
-filtra estrictament pel rol.
-"""
+"""Permisos d'agents i documents: rol i centre verificats al servidor."""
 
 from __future__ import annotations
 
@@ -40,10 +34,26 @@ def comprova_acces_agent(
     return agent
 
 
-def doc_ids_permesos(rol: Rol) -> set[str] | None:
-    """Conjunt de doc_ids accessibles per al rol, o None si no hi ha restricció.
+def doc_ids_permesos(
+    rol: Rol, db=None, institucio_id: str | None = None
+) -> set[str]:
+    """Permisos documentals calculats al servidor i confinats al centre.
 
-    Ganxo per a un control documental més fi en el futur (p. ex. amagar actes de
-    direcció a les famílies). Al MVP retorna None (tots els documents indexats).
+    Sense context verificable no es concedeix cap document. Famílies i alumnat
+    només reben coneixement classificat públic explícitament; sensible o
+    desconegut mai entra al RAG, tampoc per a administració.
     """
-    return None
+    if db is None or not institucio_id or not isinstance(rol, Rol):
+        return set()
+    from sqlalchemy import select
+    from app.db.models import Document
+
+    stmt = select(Document.doc_id).where(
+        Document.institucio_id == institucio_id,
+        Document.sensibilitat.in_(("public", "docent", "intern")),
+    )
+    if rol in {Rol.FAMILIA, Rol.ALUMNE}:
+        stmt = stmt.where(Document.sensibilitat == "public", Document.visibilitat == "tots")
+    elif rol not in {Rol.DIRECCIO, Rol.PAS, Rol.SUPERADMIN}:
+        stmt = stmt.where(Document.visibilitat == "tots")
+    return set(db.scalars(stmt).all())

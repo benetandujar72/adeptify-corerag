@@ -169,6 +169,7 @@ class DocumentOriginal(Base):
     mime: Mapped[str] = mapped_column(String(128), default="application/octet-stream")
     mida: Mapped[int] = mapped_column(Integer, default=0)
     contingut: Mapped[bytes] = mapped_column(LargeBinary)
+    contingut_format: Mapped[str] = mapped_column(String(32), default="plain", server_default="plain")
     creat_el: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
