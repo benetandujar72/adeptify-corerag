@@ -92,4 +92,12 @@ desktop.ini
 .playwright-mcp/
 .markitdown/
 
+# --- Generated output (screenshots, communication drafts) ---
+artifacts/
+
+# --- Security scan reports (paths, rules and fingerprints: CI artifacts, not code) ---
+secret-scan.json
+dependency-scan.json
+*-scan.json
+
 # NOTE: never add exceptions (!) for files that may contain real secrets/PII.
