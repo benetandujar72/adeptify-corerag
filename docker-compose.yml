@@ -41,7 +41,9 @@ services:
     # l'afegim explícitament per compatibilitat (Linux/host-gateway).
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    ports: ["8089:8000"]
+    # L'accés web passa pel proxy /api del frontend. El backend directe és local;
+    # una API entre hosts exigeix una adreça privada explícita i un firewall.
+    ports: ["${CORE_BACKEND_BIND_IP:-127.0.0.1}:8089:8000"]
     volumes:
       - ./sample_data:/app/sample_data:ro
       - hf_cache:/home/app/.cache/huggingface
@@ -52,7 +54,7 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_API_BASE_URL: http://localhost:8089/api
+        VITE_API_BASE_URL: /api
     restart: unless-stopped
     depends_on: [backend]
     ports: ["5181:5173"]

@@ -26,6 +26,12 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
+    # Originals: clau de domini fora de BD; registre per conservar claus de lectura en rotació.
+    documents_data_key: str = ""
+    documents_data_key_id: str = "v1"
+    documents_data_keys: str = "{}"
+    documents_allow_legacy_sensitive: bool = False
+
     # ── Base de dades (Postgres + pgvector) ──
     database_url: str = (
         "postgresql+psycopg://patufet:patufet@db:5432/patufet"
@@ -86,16 +92,18 @@ class Settings(BaseSettings):
     # s'autoritzen per als rols d'administració (direcció/superadmin). Des de la
     # xarxa local (rang configurable) no s'aplica cap restricció per aquest motiu.
     acces_remot_admin_only: bool = True
-    # Rangs CIDR considerats "xarxa local" (separats per comes). Per defecte:
-    # loopback + rangs privats (RFC1918 + ULA IPv6). Restringeix-ho a la subxarxa
-    # del centre (p. ex. "192.168.1.0/24") amb la variable XARXA_LOCAL_CIDRS.
-    xarxa_local_cidrs: str = (
-        "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
-    )
-    # Confiar en X-Forwarded-For per determinar la IP del client. Només actiu
-    # darrere un reverse proxy/túnel DE CONFIANÇA (altrament es podria falsejar la
-    # IP i saltar-se l'allow-list). Per defecte, IP directa del socket.
+    # LAN/VPN efectiva d'USUARIS, explícita. Cap rang privat ni bridge Docker
+    # rep privilegis LAN per defecte. P. ex. XARXA_LOCAL_CIDRS=192.168.42.0/24.
+    xarxa_local_cidrs: str = ""
+    # XFF només s'accepta de peers inclosos explícitament a proxy_trusted_cidrs.
+    # Sense aquesta confiança, una petició proxificada és remota/desconeguda.
     proxy_de_confianca: bool = False
+    # IP/CIDR dels peers del proxy, mai la LAN d'usuaris ni tot el bridge Docker.
+    # Buit: XFF no proporciona cap identitat de xarxa autoritzada.
+    proxy_trusted_cidrs: str = ""
+    # Browser sessions are same-origin. HTTP is an explicit dev-only loopback exception.
+    browser_session_allowed_origins: str = ""
+    browser_session_allow_http_dev: bool = False
 
     # ── CORS i capçaleres de seguretat ──
     # Orígens permesos per CORS (separats per comes). "*" (per defecte) és còmode

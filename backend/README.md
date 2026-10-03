@@ -65,7 +65,7 @@ cd backend
 python -m venv .venv && . .venv/Scripts/activate   # Windows
 pip install -r requirements.txt
 # Cal una DATABASE_URL a un Postgres+pgvector i un OPENAI_BASE_URL viu (Ollama).
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8000 --no-proxy-headers
 ```
 
 ## Com es corren els tests

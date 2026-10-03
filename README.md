@@ -92,6 +92,11 @@ docker compose up -d
 
 Then open the frontend, ingest sample documents and ask a question. The answer should cite sources and the privacy telemetry should show no unauthorized external LLM calls.
 
+The frontend serves `/api` through its internal proxy so a remote browser uses the same
+origin as the page. Direct backend access on port 8089 binds to `127.0.0.1` by default.
+If an API consumer runs on another host, set `CORE_BACKEND_BIND_IP` to the server's private
+interface and restrict that port with the firewall before deployment.
+
 Before any production use:
 
 - Change all default secrets.
@@ -125,4 +130,10 @@ Commercial licensing for organizations that need different terms can be discusse
 ## Short Version
 
 Adeptify Core wants to be the **Keycloak-style trust layer for institutional AI**: open, inspectable, self-hostable and strict about privacy before any agent, RAG pipeline or connector touches sensitive knowledge.
+
+# Proxy i política d'IP
+
+Abans de desplegar darrere nginx o un túnel, configura la confiança explícita
+dels proxies i la LAN/VPN d'usuaris segons [la guia d'identitat IP](docs/PROXY_IDENTITAT_IP.md).
+Els orígens proxificats sense confiança es consideren remots/desconeguts.
 

@@ -9,7 +9,7 @@ es connectarà SSO Clickedu.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
@@ -35,6 +35,7 @@ from app.core.security import (
     ip_de_peticio,
 )
 from app.db.session import get_db
+from app.core import browser_session
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -43,10 +44,12 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 def login(
     cos: LoginRequest,
     request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> LoginResponse:
     """Autentica amb usuari + contrasenya contra el registre d'usuaris."""
+    browser_session.protegeix_entrada(request, settings)
     if not cos.contrasenya:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -135,7 +138,8 @@ def login(
         )
     except Exception:
         pass
-    return LoginResponse(token=token, rol=rol.value)
+    return LoginResponse(token=browser_session.resposta_sessio(token, response, request, settings),
+                         rol=rol.value)
 
 
 @router.get("/institucions", response_model=InstitucionsPubliquesResponse)
@@ -167,8 +171,10 @@ def me(
 
 @router.post("/logout")
 def logout(
+    response: Response,
     usuari: Usuari = Depends(get_current_user),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> dict:
     """Tanca la sessió a TOT arreu: incrementa `token_version`, de manera que
     QUALSEVOL token emès abans (en aquest o altres dispositius) queda invalidat."""
@@ -177,6 +183,7 @@ def logout(
         audit.registra_accio(db, usuari=usuari.usuari, rol=usuari.rol.value, accio="logout")
     except Exception:
         pass
+    browser_session.esborra_sessio(response, settings)
     return {"ok": True}
 
 

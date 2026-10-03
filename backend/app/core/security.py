@@ -74,6 +74,7 @@ def descodifica_token(token: str, settings: Settings | None = None) -> Usuari:
         payload = jwt.decode(
             token, settings.jwt_secret, algorithms=[settings.jwt_algorithm],
             audience=_JWT_AUD, issuer=_JWT_ISS,
+            options={"require": ["exp", "iat", "sub", "rol", "inst", "tv"]},
         )
     except jwt.ExpiredSignatureError as exc:
         raise HTTPException(
@@ -88,13 +89,15 @@ def descodifica_token(token: str, settings: Settings | None = None) -> Usuari:
 
     sub = payload.get("sub")
     rol = payload.get("rol")
-    if not sub or not rol or not es_rol_valid(rol):
+    institucio = payload.get("inst")
+    tv = payload.get("tv")
+    if (not isinstance(sub, str) or not sub or not isinstance(rol, str)
+            or not es_rol_valid(rol) or not isinstance(institucio, str) or not institucio
+            or type(tv) is not int or tv < 0):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token sense identitat o rol vàlids.",
         )
-    institucio = payload.get("inst") or "nou_patufet"
-    tv = int(payload.get("tv", 0) or 0)
     return Usuari(usuari=sub, rol=Rol(rol), institucio=institucio, token_version=tv)
 
 
@@ -105,9 +108,8 @@ def _revalida_contra_bd(db, usuari: "Usuari") -> "Usuari":
     - `token_version` no coincideix               → 401 (logout/canvi de contrasenya)
     - rol diferent a la BD                         → mana la BD (degradació de rol)
 
-    Si NO hi ha fila (p. ex. tokens sintètics de test o desplegaments sense taula
-    d'usuaris encara), es confia en el token (comportament previ). La supressió
-    DURA d'un usuari (fila esborrada) queda coberta per la caducitat del token.
+    Sense fila o amb un rol invàlid, el token deixa de valer immediatament.
+    Un JWT signat no substitueix l'estat actual del compte.
     """
     from sqlalchemy import select
 
@@ -120,7 +122,11 @@ def _revalida_contra_bd(db, usuari: "Usuari") -> "Usuari":
         )
     )
     if row is None:
-        return usuari
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="El compte ja no existeix.")
+    if not es_rol_valid(row.rol):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="El compte no té un rol vàlid.")
     if not row.actiu:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -170,15 +176,45 @@ def _es_ip_local(ip: str | None, cidrs_str: str) -> bool:
 
 
 def ip_de_peticio(request: Request | None, settings: Settings) -> str | None:
-    """IP del client. Darrere proxy de confiança, usa el primer X-Forwarded-For;
-    altrament, la IP directa del socket (evita falsejament de la capçalera)."""
-    if request is None:
+    """Identitat de xarxa: socket directe o cadena de proxies explícits.
+
+    Només el peer verificat pot aportar XFF. Es recorre des de la dreta i
+    s'aturen els salts al primer origen que NO és un proxy de confiança.
+    Una cadena sense origen verificable mai rep els privilegis de la LAN.
+    """
+    if request is None or request.client is None:
         return None
-    if settings.proxy_de_confianca:
-        xff = request.headers.get("x-forwarded-for")
-        if xff:
-            return xff.split(",")[0].strip()
-    return request.client.host if request.client else None
+    try:
+        peer = ipaddress.ip_address(request.client.host)
+    except ValueError:
+        return None
+    capcaleres_xff = request.headers.getlist("x-forwarded-for")
+    if len(capcaleres_xff) > 1:
+        return None  # evita interpretacions diferents entre proxy i app
+    xff = capcaleres_xff[0] if capcaleres_xff else None
+    if not settings.proxy_de_confianca:
+        # Un reverse proxy sense confiança configurada no és un usuari LAN,
+        # encara que el seu socket pertanyi a un bridge privat de Docker.
+        if xff is not None:
+            return None
+        return str(peer.ipv4_mapped or peer) if isinstance(peer, ipaddress.IPv6Address) else str(peer)
+    try:
+        proxies = tuple(ipaddress.ip_network(cidr.strip(), strict=False)
+                        for cidr in settings.proxy_trusted_cidrs.split(",") if cidr.strip())
+    except ValueError:
+        return None
+    if not proxies or not any(peer in net for net in proxies) or not xff or len(xff) > 4096:
+        return None
+    try:
+        cadena = [ipaddress.ip_address(tros.strip()) for tros in xff.split(",")]
+    except ValueError:
+        return None
+    while cadena and any(cadena[-1] in net for net in proxies):
+        cadena.pop()
+    if not cadena:
+        return None
+    client = cadena[-1]
+    return str(client.ipv4_mapped or client) if isinstance(client, ipaddress.IPv6Address) else str(client)
 
 
 def acces_es_remot(request: Request | None, settings: Settings) -> bool:
@@ -222,10 +258,7 @@ def comprova_acces_xarxa_institucio(
 
     if usuari.rol in ROLS_ACCES_REMOT:
         return  # direcció/superadmin: by-pass per no quedar mai bloquejats
-    try:
-        politica = acces_xarxa.politica_per_institucio(db, usuari.institucio)
-    except Exception:
-        return  # tolerant: si la BD falla, no bloqueja per aquest motiu
+    politica = acces_xarxa.politica_per_institucio(db, usuari.institucio)
     if not politica.get("actiu"):
         return
     ip = ip_de_peticio(request, settings)
@@ -259,14 +292,9 @@ def get_current_user(
 
     Format esperat: `Authorization: Bearer <token>`.
     """
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Falta la capçalera Authorization: Bearer <token>.",
-        )
-    token = authorization.split(" ", 1)[1].strip()
+    from app.core.browser_session import token_de_peticio
+    token = token_de_peticio(request, authorization, settings)
     usuari = descodifica_token(token, settings)
-    comprova_acces_remot(request, usuari, settings)
     # Política per institució: obrim una sessió curta (no podem usar Depends(get_db)
     # aquí perquè això mateix és una dependència). La cache redueix la càrrega.
     try:
@@ -276,13 +304,15 @@ def get_current_user(
         try:
             # Revalida contra la BD (desactivació/revocació/degradació de rol).
             usuari = _revalida_contra_bd(sessio, usuari)
+            # Xarxa i rol: decidir amb la identitat revalidada, després d'una degradació.
+            comprova_acces_remot(request, usuari, settings)
             comprova_acces_xarxa_institucio(request, usuari, settings, sessio)
         finally:
             sessio.close()
     except HTTPException:
         raise
-    except Exception:
-        # Si la BD no està disponible (p. ex. en alguns tests molt primitius), no
-        # bloquegem per aquest motiu — la resta del backend no funcionaria igualment.
-        pass
+    except Exception as exc:
+        # Fail-closed: no comprovar una revocació mai pot donar accés.
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="No s'ha pogut validar la sessió. Torna-ho a provar.") from exc
     return usuari

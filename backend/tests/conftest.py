@@ -20,10 +20,10 @@ os.environ.setdefault("AUDIT_LOG_PATH", "")  # desactiva escriptura a fitxer
 # desactivem per defecte als tests (el TestClient no té IP real); el test dedicat
 # `test_acces_remot.py` l'activa explícitament.
 os.environ.setdefault("ACCES_REMOT_ADMIN_ONLY", "false")
-# Confiança del X-Forwarded-For als tests: el TestClient envia "testclient" com a
-# request.client.host (no és una IP vàlida). Si activem `proxy_de_confianca`,
-# podem injectar la IP via XFF (vegeu el fixture `client`).
+# El fixture client representa un proxy sintètic amb peer 127.0.0.2; només
+# aquesta IP de TEST té confiança. No hi ha excepcions TestClient a producció.
 os.environ.setdefault("PROXY_DE_CONFIANCA", "true")
+os.environ.setdefault("PROXY_TRUSTED_CIDRS", "127.0.0.2/32")
 
 import datetime as dt  # noqa: E402
 
@@ -38,6 +38,48 @@ from sqlalchemy.pool import StaticPool  # noqa: E402
 def _entorn_test():
     """Garanteix variables d'entorn coherents durant tota la sessió."""
     yield
+
+
+@pytest.fixture(autouse=True)
+def _peer_proxy_sintetic(request, monkeypatch):
+    """Peer TestClient explícit només als tests llegats, sense excepció a l'app."""
+    if getattr(request.module, "AUTENTICACIO_REAL", False):
+        return
+    from fastapi import Request
+    from app.core import security
+
+    original = security.ip_de_peticio
+
+    def _ip(req, settings):
+        if req is not None and req.client and req.client.host == "testclient":
+            scope = dict(req.scope)
+            scope["client"] = ("127.0.0.2", req.client.port)
+            req = Request(scope)
+        return original(req, settings)
+
+    monkeypatch.setattr(security, "ip_de_peticio", _ip)
+
+
+@pytest.fixture(autouse=True)
+def _identitats_sintetiques_llegades(request, monkeypatch):
+    """Compatibilitat NOMÉS de tests, mai una excepció d'autenticació a l'app.
+
+    AUTENTICACIO_REAL=True desactiva l'acomodació als tests del guardià real.
+    """
+    if getattr(request.module, "AUTENTICACIO_REAL", False):
+        return
+    from sqlalchemy import select
+    from app.core import security
+    from app.db.models import User
+
+    original = security._revalida_contra_bd
+
+    def _revalida(db, usuari):
+        row = db.scalar(select(User).where(
+            User.username == usuari.usuari, User.institucio_id == usuari.institucio))
+        return usuari if row is None else original(db, usuari)
+
+    monkeypatch.setattr(security, "_revalida_contra_bd", _revalida)
 
 
 @pytest.fixture()
