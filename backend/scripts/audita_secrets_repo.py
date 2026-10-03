@@ -375,7 +375,7 @@ def severitat_de(tipus: str, classificacio: str, ruta: str, zona: str, *, versio
     if classificacio == CLAS_NO_AUDITAT:
         return SEV_BLOQUEJANT  # «no ho he pogut mirar» mai és verd (pot amagar PII massiva)
     # Tipus de baixa confiança: NO es degraden en bloc. El que decideix és el MATERIAL —
-    # `SESSION_SECRET=b7f3a91c4d2e8a05` és una credencial de debò i ha de bloquejar, mentre que
+    # `SESSION_SECRET=<valor llarg i aleatori>` és una credencial de debò i ha de bloquejar, mentre que
     # una variable anomenada `token` (curta i d'una sola classe de caràcters) és soroll. Vetar
     # el tipus sencer amagava el primer cas, que és precisament el que aquests detectors busquen.
     if tipus in _TIPUS_BAIXA_CONFIANCA and not material_fort:
