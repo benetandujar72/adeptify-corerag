@@ -1,29 +1,5 @@
-# gitleaks configuration for adeptify-corerag
-# Uses the full set of gitleaks default rules, plus a tight allowlist so that
-# placeholders in templates/docs do not cause false positives — while REAL
-# secrets are still blocked.
-
-title = "Adeptify gitleaks config"
-
+title = "Adeptify credential scanning"
 [extend]
 useDefault = true
-
-[allowlist]
-description = "Allow placeholders and example files only (never real secrets)"
-
-# Files that legitimately contain empty keys or placeholders.
-paths = [
-  '''(^|/)\.env\.example$''',
-  '''(^|/)\.gitleaks\.toml$''',
-  '''(^|/)\.pre-commit-config\.yaml$''',
-]
-
-# Obvious non-secret placeholders. Keep this list conservative.
-regexes = [
-  '''(?i)(changeme|your[_-]?(key|token|secret|password)|placeholder|example|dummy|test[_-]?token|<[^>]+>|x{6,}|\$\{[^}]+\})''',
-  '''patufet2026''',          # demo seed password used in docs/seeds (not a real secret)
-  '''admin-patufet-2026''',
-]
-
-# Tip: to scan the FULL history before going public, run:
-#   gitleaks detect --source . --redact -v --config .gitleaks.toml
+# No path-wide or substring allowlists. Fixtures are reviewed by exact
+# fingerprint, rule and path in the strict scanner, with a recorded ticket.
