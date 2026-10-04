@@ -31,7 +31,7 @@
 The latest released minor version receives security fixes. Older versions are best-effort.
 
 ### Hardening reminders for operators
-Before production: change `JWT_SECRET` and all seed passwords, enable MFA for admin/management roles, restrict remote access (`ACCES_REMOT_ADMIN_ONLY`), serve over HTTPS behind a trusted reverse proxy, and run the built-in production check.
+Before production: change `JWT_SECRET` and all seed passwords, enable MFA for admin/management roles, restrict remote access (`ACCES_REMOT_ADMIN_ONLY`), serve over HTTPS behind a trusted reverse proxy, and run the built-in production check. Set `DOCUMENTS_DATA_KEY` (32 random bytes, base64) outside the database and the repository, and keep a separate copy: without it, sensitive originals (and every original in production) are rejected instead of stored in clear, and if it is lost the encrypted originals cannot be opened again. See `.env.example` for rotation.
 
 ---
 
@@ -59,7 +59,7 @@ Before production: change `JWT_SECRET` and all seed passwords, enable MFA for ad
 La darrera versió menor publicada rep correccions de seguretat. Les versions anteriors, segons disponibilitat.
 
 ### Recordatoris d'enduriment per a operadors
-Abans de producció: canvia `JWT_SECRET` i totes les contrasenyes de seed, activa MFA per als rols d'administració/gestió, restringeix l'accés remot (`ACCES_REMOT_ADMIN_ONLY`), serveix per HTTPS darrere un reverse proxy de confiança i executa la verificació de producció integrada.
+Abans de producció: canvia `JWT_SECRET` i totes les contrasenyes de seed, activa MFA per als rols d'administració/gestió, restringeix l'accés remot (`ACCES_REMOT_ADMIN_ONLY`), serveix per HTTPS darrere un reverse proxy de confiança i executa la verificació de producció integrada. Configura `DOCUMENTS_DATA_KEY` (32 bytes aleatoris en base64) fora de la base de dades i del repositori, i guarda'n una còpia a part: sense la clau, els originals sensibles (i tots els originals a producció) es rebutgen en lloc de desar-se en clar, i si es perd, els originals xifrats no es poden tornar a obrir. La rotació és a `.env.example`.
 
 ---
 
@@ -87,4 +87,4 @@ Abans de producció: canvia `JWT_SECRET` i totes les contrasenyes de seed, activ
 La última versión menor publicada recibe correcciones de seguridad. Las versiones anteriores, según disponibilidad.
 
 ### Recordatorios de endurecimiento para operadores
-Antes de producción: cambia `JWT_SECRET` y todas las contraseñas de seed, activa MFA para los roles de administración/gestión, restringe el acceso remoto (`ACCES_REMOT_ADMIN_ONLY`), sirve por HTTPS tras un reverse proxy de confianza y ejecuta la verificación de producción integrada.
+Antes de producción: cambia `JWT_SECRET` y todas las contraseñas de seed, activa MFA para los roles de administración/gestión, restringe el acceso remoto (`ACCES_REMOT_ADMIN_ONLY`), sirve por HTTPS tras un reverse proxy de confianza y ejecuta la verificación de producción integrada. Configura `DOCUMENTS_DATA_KEY` (32 bytes aleatorios en base64) fuera de la base de datos y del repositorio, y guarda una copia aparte: sin la clave, los originales sensibles (y todos los originales en producción) se rechazan en lugar de guardarse en claro, y si se pierde, los originales cifrados no se pueden volver a abrir. La rotación está en `.env.example`.
